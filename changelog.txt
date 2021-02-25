@@ -1,5 +1,8 @@
 /develop
 
+0.0.2
+    + No API change; clean up some documentation.
+    
 0.0.1
     + Add interfaces:
         + IQuery - A type that can run a database query.
