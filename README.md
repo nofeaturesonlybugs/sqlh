@@ -21,7 +21,7 @@ Here are some example `Scanners`:
 scanner := &sqlh.Scanner{
     Mapper : &set.Mapper{
         // If using any of the sql.Null* types include them in TreatAsScalar.
-        TreatAsAsScalar : set.NewTypeList( sql.NullString{}, sql.NullBool{} ),
+        TreatAsScalar : set.NewTypeList( sql.NullString{}, sql.NullBool{} ),
         // Nested/embedded structs have their name parts joined with "_".
         Join : "_"
         // Define struct tags to use for SQL column names in order of highest preference.
@@ -97,23 +97,21 @@ err = scanner.Select(db, &dest, query)
 ```
 
 ## A Note to Those that Came Before Me
-Before continuing I want to be clear I am not belittling or degrading the work performed by others in this area.  It **is** a difficult problem.  It would be hard enough in a language with looser conventions such as `PHP`; however `Go` is strongly typed which means any such solution must dive into `reflect` -- which is a bear in and of itself -- and adds mountains of complexity onto the fundamental problem about to be presented.
+Before continuing I want to be clear I am not belittling or degrading the work performed by others in this area.  **It is a difficult problem.**  It would be hard enough in a language with looser conventions such as `PHP`; however `Go` is strongly typed which means any such solution must dive into `reflect` -- which is a bear in and of itself -- and adds mountains of complexity onto the fundamental problem about to be presented.
 
 ## Why not sqlx, scany, or another package?  
-They lack flexbility in ther mappings of columns to nested fields.  
+They lack flexbility in their mappings of columns to nested fields.  
 
 `sqlx` only understands struct embedding.  `scany`'s name generation does not appear to be as flexible as `set.Mapper`.  I suspect the limitations in these packages arise either by conscious design choice or by introducing `reflect` too close to the domain of interacting with the database and unnecessarily complicating matters.
 
-Where this package differs is that it is not at all concerned with mapping columns to struct fields.  It's not concerned with mapping at all.  The entire concern of mapping `strings` to `struct fields` has been exported to my reflection package `set`.
+Where this package differs is that it is not concerned with mapping columns to struct fields **at all**.  The entire concern of mapping `strings` to `struct fields` has been exported to my reflection package `set`.
 
-It is within `set` that I tackled this problem.  While a primary goal was to use the solution to scan database results that was not and is not the entire scope of the problem.  Often while implementing the `set.Mapper` I thought:  
+By generalizing the problem beyond the domain of databases a more flexible and reusable solution has presented itself.  While a primary goal was to use the solution to scan database results that **was not and is not the entire scope of the problem.**  Often while implementing the `set.Mapper` I thought:  
   * > What if this mapping is for CSV or `map[string]interface{}`?  
   * > What if the `json` and `db` tags are identical?  Can I allow for tag re-use?
   * > What if I want to map the same `struct T` with different rules?  I shouldn't have to redefine `T` as `TOther`.
 
-As a result of tackling the overall problem in a more general sense and not being directly focused on mapping database results to struct fields I think the resulting `set.Mapper` offers a great amount of flexibility and reuse.  
-
-From there it became somewhat trivial to scan columns.
+Once the problem was *somewhat* solved in the general sense it became fairly trivial to scan columns *and* offer a wide range of flexibility.
 
 ## Benchmarks  
 `scanner_test.go` contains the source for these benchmarks.  However the general idea in each benchmark is to load up `sqlmock` with 100 rows, query, and scan the results.  
@@ -127,12 +125,12 @@ BenchmarkSqlMockScannerComplicated-8       10000            190432 ns/op        
 ```
 
 * BenchmarkSqlMockBaseline  
-  Your standard `for rows.Next()` code; no special frills, magic, or reflection.  
+  Your standard `for rows.Next()` code -- no special frills, magic, or reflection!  
 * BenchmarkSqlMockSqlx  
-  `sqlx`'s `db.Select( &dest, query )`  
+  `sqlx`'s `db.Select(&dest, query)`  
 * BenchmarkSqlMockScany  
   `scany`'s `sqlscan.Select(ctx, db, &dest, query)`
 * BenchmarkSqlMockScanner  
-  `Scanner.Select( db, &dest, query )` from this package.  
+  `Scanner.Select(db, &dest, query)` from this package.  
 * BenchmarkSqlMockScannerComplicated  
-  `Scanner.Select( db, &dest, query )` from this package where `dest` is a more complicated hierarchy
+  `Scanner.Select(db, &dest, query)` from this package where `dest` is a more complicated hierarchy
