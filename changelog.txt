@@ -1,5 +1,6 @@
 /develop
 
+0.0.1
     + Add interfaces:
         + IQuery - A type that can run a database query.
         + IRows - A type that can iterate a database result set.
