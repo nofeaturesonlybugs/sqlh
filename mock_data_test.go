@@ -443,7 +443,7 @@ var benchmarkMapperJson string = `
 		"customer_last": "Cooke",
 		"vendor_id": 26,
 		"vendor_name": "Nonummy Ipsum Non PC",
-		"vendor_description": "magnis dis parturient montes, nascetur ridiculus",
+		"vendor_description": "magnis dis parturient montes, nascetur ridiculous",
 		"vendor_contact_id": 26,
 		"vendor_contact_first": "Warren",
 		"vendor_contact_last": "Stark"
@@ -1157,7 +1157,7 @@ var benchmarkMapperJson string = `
 		"customer_last": "Potter",
 		"vendor_id": 68,
 		"vendor_name": "Auctor Associates",
-		"vendor_description": "magnis dis parturient montes, nascetur ridiculus mus. Donec",
+		"vendor_description": "magnis dis parturient montes, nascetur ridiculous mus. Donec",
 		"vendor_contact_id": 68,
 		"vendor_contact_first": "Elton",
 		"vendor_contact_last": "Raymond"
@@ -1377,7 +1377,7 @@ var benchmarkMapperJson string = `
 		"customer_first": "Lillith",
 		"customer_last": "Baldwin",
 		"vendor_id": 81,
-		"vendor_name": "Nascetur Ridiculus PC",
+		"vendor_name": "Nascetur Ridiculous PC",
 		"vendor_description": "at augue",
 		"vendor_contact_id": 81,
 		"vendor_contact_first": "Harding",
