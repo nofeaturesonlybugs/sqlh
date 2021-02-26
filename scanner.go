@@ -50,7 +50,7 @@ func (me *Scanner) ScanRows(R IRows, dest interface{}) error {
 	} else if columns, err = R.Columns(); err != nil {
 		return errors.Go(err)
 	} else if D = set.V(dest); !D.CanWrite {
-		return errors.Errorf("Dest is not writable; call %T.Rows with address-of dest.", me)
+		return errors.Errorf("Dest is not writable; call %T.ScanRows with address-of dest.", me)
 	} else if !D.IsSlice {
 		return errors.Errorf("Dest should be slice but is type= %T", dest)
 	} else if !D.ElemTypeInfo.IsStruct {
@@ -71,6 +71,7 @@ func (me *Scanner) ScanRows(R IRows, dest interface{}) error {
 		} else if err = R.Scan(assignables...); err != nil {
 			return errors.Go(err)
 		}
+		// While this *can* panic it *should never* panic.  Famous last words.
 		set.Panics.Append(D, E)
 	}
 	for R.Next() {
@@ -83,8 +84,7 @@ func (me *Scanner) ScanRows(R IRows, dest interface{}) error {
 		if err = R.Scan(assignables...); err != nil {
 			return errors.Go(err)
 		}
-		// We use set.Panics.Append() because we have reasonable guarantee the panic can not occur.
-		// Our elements E are created by calling D.NewElem() and should always be of correct type.
+		// While this *can* panic it *should never* panic.  Second famous last words.
 		set.Panics.Append(D, E)
 	}
 	if err = R.Err(); err != nil {
