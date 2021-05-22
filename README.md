@@ -4,133 +4,200 @@
 [![codecov](https://codecov.io/gh/nofeaturesonlybugs/sqlh/branch/master/graph/badge.svg)](https://codecov.io/gh/nofeaturesonlybugs/sqlh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`sqlh` provides some utility for `database/sql` and other compatible interfaces.
+`sqlh` aka `SQL Helper`.
 
-## Interfaces  
-`IQuery` and `IRows` are exported interfaces.  `IQuery` is defined such that a `*sql.DB` or `*sqlx.DB` should be compatible as well as the types for database transactions.  `IRows` is compatible with `*sql.Rows` and consequently `*sqlx.Rows`.
+## `sqlh.Scanner`
+`sqlh.Scanner` is a powerful database result set scanner.  
+* Similar to `jmoiron/sqlx` but supports nested Go `structs`.
+* *Should work with any `database/sql` compatible driver.*
 
-## Scanner  
-Currently the workhorse in this package is the `Scanner`.  The methods on `Scanner` are helpers to run queries and populate results.  
+## `model.Models`
+`model.Models` supports `INSERT|UPDATE` on Go `structs` registered as database *models*, where a *model* is a language type mapped to a database table.  
+* Supports Postgres.
+* Supports grammars that use `?` for parameters **and** have a `RETURNING` clause.  
+  * Benchmarked with Sqlite 3.35 -- your mileage may vary.
 
-Mapping result set `columns` to destination fields in `structs` is controlled by a `set.Mapper`.  
+## `sqlh` Design Philosphy
+```
+Hand Crafted  |                                         |  Can I Have
+   Artisinal  | ======================================= |  My Database
+         SQL  |     ^                                   |  Back, Please?
+                    |
+                    +-- sqlh is here.
+```
+`sqlh` is easy to use because it lives very close to `database/sql`.  The primary goal of `sqlh` is to work with and facilitate using `database/sql` without replacing or hijacking it.  When using `sqlh` you manage your `*sql.DB` or create `*sql.Tx` as you normally would and pass those as arguments to functions in `sqlh` when scanning or persisting models; `sqlh` then works within the confines of what you gave it.
 
-`set.Mapper` is very flexible; you can find the `set` package @ https://github.com/nofeaturesonlybugs/set
+When accepting arguments that work directly with the database (`*sql.DB` or `*sql.Tx`) `sqlh` accepts them as interfaces.  This means `sqlh` may work with other database packages that define their own types as long as they kept a method set similar to `database/sql`.
 
-Here are some example `Scanners`:   
+The implementation for `sqlh` is fairly straight forward.  Primarily this is because all the heavy `reflect` work is offloaded to `set`, which is another of my packages @ https://www.github.com/nofeaturesonlybugs/set  
+
+`set` exports a flexible `set.Mapper` for mapping Go `structs` to string names such as database columns.  A lot of the power and flexibility exposed by `sqlh` is really derived from `set`.  I think this gives `sqlh` an advantage over similar database packages because it's very configurable, performs well, and alleviates `sqlh` from getting bogged down in the complexities of `reflect`.
+
+Here are some `sqlh.Scanner` examples:
+
 ```go
-scanner := &sqlh.Scanner{
-    Mapper : &set.Mapper{
-        // If using any of the sql.Null* types include them in TreatAsScalar.
-        TreatAsScalar : set.NewTypeList( sql.NullString{}, sql.NullBool{} ),
-        // Nested/embedded structs have their name parts joined with "_".
-        Join : "_"
-        // Define struct tags to use for SQL column names in order of highest preference.
-        // This Tags definition means try `db`, then `json`, then fall back to struct field name.
-        Tags : []string{ "db", "json" },
-    }
+type MyStruct struct {
+    Message string
+    Number  int
 }
-
+//
+db, err := examples.Connect(examples.ExSimpleMapper)
+if err != nil {
+    fmt.Println(err.Error())
+}
+//
 scanner := &sqlh.Scanner{
-    // This mapper doesn't use struct tags.  It uses field names converted to lower case.
-    // Nested/embedded structs will have their name parts joined with "" (empty string).
-    Mapper : &set.Mapper{
-        Transform : strings.ToLower,
-    }
+    // Mapper is pure defaults.  Uses exported struct names as column names.
+    Mapper: &set.Mapper{},
+}
+var rv []*MyStruct
+err = scanner.Select(db, &rv, "select * from mytable")
+if err != nil {
+    fmt.Println(err.Error())
 }
 ```
 
-## Selecting rows  
 ```go
-type Dest struct {
-  A string
-  B int
-}
-var dest []*Dest
-err = scanner.Select(db, &dest, "select A, B from myTable")
-```
-
-## Complicated Destination
-```go
-type CommonDb struct {
-  Id           int
-  CreatedTime  string `json:"created_time"`
-  ModifiedTime string `json:"modified_time"`
+type Common struct {
+    Id       int       `json:"id"`
+    Created  time.Time `json:"created"`
+    Modified time.Time `json:"modified"`
 }
 type Person struct {
-  *CommonDb
-  First string
-  Last  string
+    Common
+    First string `json:"first"`
+    Last  string `json:"last"`
 }
-type Vendor struct {
-  *CommonDb
-  Name        string
-  Description string
-  Contact     Person
+// Note here the natural mapping of SQL columns to nested structs.
+type Sale struct {
+    Common
+    // customer_first and customer_last map to Customer.
+    Customer Person `json:"customer"`
+    // contact_first and contact_last map to Contact.
+    Contact Person `json:"contact"`
 }
-type Record struct {
-  *CommonDb
-  Price    int
-  Quantity int
-  Total    int
-  Customer *Person
-  Vendor   *Vendor
+db, err := examples.Connect(examples.ExNestedTwice)
+if err != nil {
+    fmt.Println(err.Error())
 }
+//
 scanner := &sqlh.Scanner{
-  Mapper: &set.Mapper{
-    Elevated:  set.NewTypeList(CommonDb{}),
-    Tags:      []string{"json"},
-    Join:      "_",
-    Transform: strings.ToLower,
-  },
+    Mapper: &set.Mapper{
+      // Mapper elevates Common to same level as other fields.
+      Elevated: set.NewTypeList(Common{}),
+      // Nested struct fields joined with _
+      Join:     "_",
+      // Mapper uses struct tag db or json, db higher priority.
+      Tags:     []string{"db", "json"},
+    },
 }
+var rv []*Sale
 query := `
-  select
-    id, created_time, modified_time,
-    price, quantity, total,
-    customer_id, customer_first, customer_last,
-    vendor_id, vendor_name, vendor_description,
-    vendor_contact_id, vendor_contact_first, vendor_contact_last,
-  from myTable
-`
-var dest []*Record
-err = scanner.Select(db, &dest, query)
+        select
+            s.id, s.created, s.modified,
+            s.customer_id, c.first as customer_first, c.last as customer_last,
+            s.vendor_id as contact_id, v.first as contact_first, v.last as contact_last
+        from sales s
+        inner join customers c on s.customer_id = c.id
+        inner join vendors v on s.vendor_id = v.id
+    `
+err = scanner.Select(db, &rv, query)
+if err != nil {
+    fmt.Println(err.Error())
+}
 ```
 
-## A Note to Those that Came Before Me
-Before continuing I want to be clear I am not belittling or degrading the work performed by others in this area.  **It is a difficult problem.**  It would be hard enough in a language with looser conventions such as `PHP`; however `Go` is strongly typed which means any such solution must dive into `reflect` -- which is a bear in and of itself -- and adds mountains of complexity onto the fundamental problem about to be presented.
+## Roadmap
+The development of `sqlh` is essentially following my specific pain points when using `database/sql`:  
 
-## Why not sqlx, scany, or another package?  
-They lack flexbility in their mappings of columns to nested fields.  
+* ✓ `SELECT ⭢ for rows.Next() ⭢ row.Scan()` : covered by `sqlh.Scanner`.
+* ✓ `INSERT|UPDATE` CRUD statements : covered by `model.Models`.
+* ⭴ `DELETE` CRUD statements : to be covered by `model.Models`.
+* ⭴ `UPSERT` type operations using index information : to be covered by `model.Models`.
+* ⭴ `Find()` or `Filter()` for advanced `WHERE` clauses and model selection.
+* ⭴ Performance enhancements if possible.
+* ⭴ Relationship management -- maybe.
 
-`sqlx` only understands struct embedding.  `scany`'s name generation does not appear to be as flexible as `set.Mapper`.  I suspect the limitations in these packages arise either by conscious design choice or by introducing `reflect` too close to the domain of interacting with the database and unnecessarily complicating matters.
+Personally I find `SELECT|INSERT|UPDATE` to be the most painful and tedious with large queries or tables so those are the features I've addressed first.
 
-Where this package differs is that it is not concerned with mapping columns to struct fields **at all**.  The entire concern of mapping `strings` to `struct fields` has been exported to my reflection package `set`.
+## `set.Mapper` Tips  
+When you want `set.Mapper` to treat a nested struct as a single field rather than a struct itself add it to the `TreatAsScalar` member:  
 
-By generalizing the problem beyond the domain of databases a more flexible and reusable solution has presented itself.  While a primary goal was to use the solution to scan database results that **was not and is not the entire scope of the problem.**  Often while implementing the `set.Mapper` I thought:  
-  * > What if this mapping is for CSV or `map[string]interface{}`?  
-  * > What if the `json` and `db` tags are identical?  Can I allow for tag re-use?
-  * > What if I want to map the same `struct T` with different rules?  I shouldn't have to redefine `T` as `TOther`.
+* `TreatAsScalar : set.NewTypeList( sql.NullBool{}, sql.NullString{} )`
 
-Once the problem was *somewhat* solved in the general sense it became fairly trivial to scan columns *and* offer a wide range of flexibility.
+When you use a common nested struct to represent fields present in many of your types consider using the `Elevated` member:
+```go
+type CommonDB struct {
+    Id int
+    CreatedAt time.Time
+    ModifiedAt time.Time
+}
+type Something struct {
+    CommonDB
+    Name string
+}
+```
+Without `Elevated` the `set.Mapper` will generate names like:  
+```
+CommonDBId
+CommonDBCreatedAt
+CommonDBModifiedAt
+Name
+```
+To prevent `CommonDB` from being part of the name add `CommonDB{}` to the `Elevated` member of the mapper, which elevates the nested fields as if they were defined directly in the parent struct:  
+```go
+Elevated : set.NewTypeList( CommonDB{} )
+```
+Then the generated names will be:
+```
+Id
+CreatedAt
+ModifiedAt
+Name
+```
+
+You can further customize generated names with struct tags:
+```go
+type CommonDB struct {
+    Id int `json:"id"`
+    CreatedAt time.Time `json:"created"`
+    ModifiedAt time.Time `json:"modified"`
+}
+type Something struct {
+    CommonDB // No tag necessary since this field is Elevated.
+    Name string `json:"name"`
+}
+```
+Specify the tag name to use in the `Tags` member, which is a `[]string`:
+```go
+Tags : []string{"json"}
+```
+Now generated names will be:
+```
+id
+created
+modified
+name
+```
+If you want to use different names for some fields in your database versus your JSON encoding you can specify multiple `Tags`, with tags listed first taking higher priority:
+```go
+Tags : []string{"db", "json"} // Uses either db or json, db has higher priority.
+```
+With the above `Tags`, if `CommonDB` is defined as the following:
+```go
+type CommonDB struct {
+    Id int `json:"id" db:"pk"`
+    CreatedAt time.Time `json:"created" db:"created_tmz"`
+    ModifiedAt time.Time `json:"modified" db:"modified_tmz"`
+}
+```
+Then the mapped names are:
+```
+pk
+created_tmz
+modified_tmz
+name
+```
 
 ## Benchmarks  
-`scanner_test.go` contains the source for these benchmarks.  However the general idea in each benchmark is to load up `sqlmock` with 100 rows, query, and scan the results.  
-```
-cpu: Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz
-BenchmarkSqlMockBaseline-8                 13310            120201 ns/op            256 B/op 2 allocs/op
-BenchmarkSqlMockSqlx-8                     10000            190054 ns/op           3827 B/op 43 allocs/op
-BenchmarkSqlMockScany-8                    10000            189010 ns/op           3279 B/op 44 allocs/op
-BenchmarkSqlMockScanner-8                  10000            191752 ns/op           4041 B/op 47 allocs/op
-BenchmarkSqlMockScannerComplicated-8       10000            190432 ns/op           3887 B/op 47 allocs/op
-```
-
-* BenchmarkSqlMockBaseline  
-  Your standard `for rows.Next()` code -- no special frills, magic, or reflection!  
-* BenchmarkSqlMockSqlx  
-  `sqlx`'s `db.Select(&dest, query)`  
-* BenchmarkSqlMockScany  
-  `scany`'s `sqlscan.Select(ctx, db, &dest, query)`
-* BenchmarkSqlMockScanner  
-  `Scanner.Select(db, &dest, query)` from this package.  
-* BenchmarkSqlMockScannerComplicated  
-  `Scanner.Select(db, &dest, query)` from this package where `dest` is a more complicated hierarchy
+See my sibling package `sqlhbenchmarks` for my methodology, goals, and interpretation of results.
