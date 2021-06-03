@@ -16,4 +16,6 @@
 coverage.txt
 cpu.prof
 mem.prof
+profile*.pdf
 profile*.png
+profile*.txt
