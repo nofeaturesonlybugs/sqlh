@@ -1,4 +1,4 @@
-/branch-model
+/develop
 
     + Breaking change migration (impact=low).
         Interface sqlh.IRows renamed to sqlh.IIterates.
@@ -16,8 +16,6 @@
         + []T where T is a struct slice.
 
     + Add interfaces sqlh.IBegins and sqlh.IPrepares.
-
-/develop
 
 0.0.2
     + No API change; clean up some documentation.
