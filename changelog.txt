@@ -1,5 +1,7 @@
 /develop
 
+0.1.0
+
     + Breaking change migration (impact=low).
         Interface sqlh.IRows renamed to sqlh.IIterates.
 
