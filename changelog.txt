@@ -1,3 +1,22 @@
+/branch-model
+
+    + Breaking change migration (impact=low).
+        Interface sqlh.IRows renamed to sqlh.IIterates.
+
+    + Add packages examples, grammar, model, & schema.
+        + examples exports some utility to facilitate our example code.
+        + grammar, model, and schema work together to provide a simple `model`
+            layer to cut down on boiler plate for `INSERT|UPDATE` operations
+            on Go types representing database tables.
+
+    + sqlh.Scanner.Select can now scan the following types of results:
+        + T where T is a scalar or primitive value.
+        + []T where T is a scalar or primitive value.
+        + T where T is a single struct.
+        + []T where T is a struct slice.
+
+    + Add interfaces sqlh.IBegins and sqlh.IPrepares.
+
 /develop
 
 0.0.2
