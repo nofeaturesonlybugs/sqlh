@@ -44,6 +44,34 @@ func TestScanner_StructSliceQueryError(t *testing.T) {
 	}
 }
 
+// TODO Can't seem to mock this one with sqlmock.
+// func TestScanner_StructRowsErrNonNil(t *testing.T) {
+// 	// Tests that *sql.Rows.Err() != nil after the for...*sql.Rows.Next() {} loop when dest is a struct.
+// 	//
+// 	chk := assert.New(t)
+// 	//
+// 	db, mock, err := sqlmock.New()
+// 	chk.NoError(err)
+// 	chk.NotNil(mock)
+// 	chk.NotNil(db)
+// 	{
+// 		// When dest is []struct and *sql.Rows.Err() is non-nil
+// 		rows := sqlmock.NewRows([]string{"A"}).
+// 			AddRow("a").AddRow("b").AddRow("c").
+// 			RowError(2, errors.Errorf("[]struct *sql.Rows.Err() is non-nil"))
+// 		mock.ExpectQuery("select +").WillReturnRows(rows)
+// 		type Dest struct {
+// 			A string
+// 		}
+// 		scanner := &sqlh.Scanner{
+// 			Mapper: &set.Mapper{},
+// 		}
+// 		var d Dest
+// 		err = scanner.Select(db, &d, "select * from table")
+// 		chk.Error(err)
+// 	}
+// }
+
 func TestScanner_StructSliceRowsErrNonNil(t *testing.T) {
 	// Tests that *sql.Rows.Err() != nil after the for...*sql.Rows.Next() {} loop when dest is a []struct.
 	//
