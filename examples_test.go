@@ -215,3 +215,53 @@ func ExampleScanner_Select_struct() {
 	fmt.Println(dest.Min.Format(time.RFC3339), dest.Max.Format(time.RFC3339))
 	// Output: 1970-01-01T00:00:00Z 2012-01-01T00:00:00Z
 }
+
+func ExampleScanner_Select_structNotFound() {
+	type Common struct {
+		Id       int       `json:"id"`
+		Created  time.Time `json:"created"`
+		Modified time.Time `json:"modified"`
+	}
+	type Person struct {
+		Common
+		First string `json:"first"`
+		Last  string `json:"last"`
+	}
+	// Note here the natural mapping of SQL columns to nested structs.
+	type Sale struct {
+		Common
+		// customer_first and customer_last map to Customer.
+		Customer Person `json:"customer"`
+		// contact_first and contact_last map to Contact.
+		Contact Person `json:"contact"`
+	}
+	//
+	db, err := examples.Connect(examples.ExStructNotFound)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	scanner := sqlh.Scanner{
+		Mapper: &set.Mapper{
+			Tags: []string{"db", "json"},
+		},
+	}
+	query := `
+		select
+			s.id, s.created, s.modified,
+			s.customer_id, c.first as customer_first, c.last as customer_last,
+			s.vendor_id as contact_id, v.first as contact_first, v.last as contact_last
+		from sales s
+		inner join customers c on s.customer_id = c.id
+		inner join vendors v on s.vendor_id = v.id
+	`
+	// When destination is a poiner to struct and no rows are found then the dest pointer
+	// remains nil and no error is returned.
+	var dest *Sale
+	err = scanner.Select(db, &dest, query)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	fmt.Printf("Is nil: %v\n", dest == nil)
+
+	// Output: Is nil: true
+}

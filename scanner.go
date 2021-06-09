@@ -88,6 +88,8 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 		var rows *sql.Rows
 		var columns []string
 		var err error
+		// Why not QueryRow()?  Because *sql.Row does not allow use to get the list of columns which we
+		// need for our dynamic Scan().
 		if rows, err = Q.Query(query, args...); err != nil {
 			return errors.Go(err)
 		}
@@ -105,6 +107,13 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 			} else if err = rows.Scan(assignables...); err != nil {
 				return errors.Go(err)
 			}
+		} else {
+			// When no rows are returned set dest to the zero value of its type.  Since dest should be a pointer
+			// we need to Indirect(ValueOf(dest)) and set TypeOf(dest).Elem().
+			reflect.Indirect(reflect.ValueOf(dest)).Set(reflect.Zero(reflect.TypeOf(dest).Elem()))
+		}
+		if err = rows.Err(); err != nil {
+			return errors.Go(err)
 		}
 
 	case destScalarSlice:

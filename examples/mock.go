@@ -18,6 +18,7 @@ const (
 	ExScalar
 	ExScalarSlice
 	ExStruct
+	ExStructNotFound
 )
 
 // Connect creates a sqlmock DB and configures it for the example.
@@ -77,6 +78,15 @@ func Connect(e Example) (DB *sql.DB, err error) {
 				AddRow(
 					time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
 					time.Date(2012, 1, 1, 0, 0, 0, 0, time.UTC))).RowsWillBeClosed()
+
+	case ExStructNotFound:
+		mock.ExpectQuery("select +").
+			WillReturnRows(
+				sqlmock.NewRows([]string{
+					"id", "created", "modified",
+					"customer_id", "customer_first", "customer_last",
+					"contact_id", "contact_first", "contact_last"})).
+			RowsWillBeClosed()
 
 	}
 
