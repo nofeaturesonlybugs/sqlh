@@ -1,7 +1,7 @@
+/develop
+
     + sqlh.Scanner.Select handles "no rows" for dest *T where T is a struct by setting
         the *T to nil.
-
-/develop
 
 0.1.0
 
