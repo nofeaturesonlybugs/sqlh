@@ -10,20 +10,20 @@ import (
 	"github.com/nofeaturesonlybugs/sqlh/model/statements"
 )
 
-func TestPostgresGrammar(t *testing.T) {
+func TestDefaultGrammar(t *testing.T) {
 	chk := assert.New(t)
 	//
-	g := grammar.Postgres
+	g := grammar.Sqlite
 	//
 	{
 		// inserts
 		columns := []string{"a", "b", "c"}
-		auto := []string{}
+		auto := []string(nil)
 		query, err := g.Insert("foo", columns, auto)
 		chk.NoError(err)
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
-		expect := "INSERT INTO foo\n\t\t( a, b, c )\n\tVALUES\n\t\t( $1, $2, $3 )"
+		expect := "INSERT INTO foo\n\t\t( a, b, c )\n\tVALUES\n\t\t( ?, ?, ? )"
 		chk.Equal(expect, query.SQL)
 		chk.Equal([]string{"a", "b", "c"}, query.Arguments)
 		chk.Empty(query.Scan)
@@ -34,7 +34,7 @@ func TestPostgresGrammar(t *testing.T) {
 		chk.NoError(err)
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
-		expect = "INSERT INTO foo\n\t\t( a, b, c )\n\tVALUES\n\t\t( $1, $2, $3 )\n\tRETURNING x, y, z"
+		expect = "INSERT INTO foo\n\t\t( a, b, c )\n\tVALUES\n\t\t( ?, ?, ? )\n\tRETURNING x, y, z"
 		chk.Equal(expect, query.SQL)
 		chk.Equal([]string{"a", "b", "c"}, query.Arguments)
 		chk.Equal([]string{"x", "y", "z"}, query.Scan)
@@ -49,7 +49,7 @@ func TestPostgresGrammar(t *testing.T) {
 		chk.NoError(err)
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
-		expect := "UPDATE foo SET\n\t\ta = $1,\n\t\tb = $2,\n\t\tc = $3\n\tWHERE\n\t\tx = $4"
+		expect := "UPDATE foo SET\n\t\ta = ?,\n\t\tb = ?,\n\t\tc = ?\n\tWHERE\n\t\tx = ?"
 		chk.Equal(expect, query.SQL)
 		chk.Equal(append(append([]string{}, columns...), keys...), query.Arguments)
 		chk.Empty(query.Scan)
@@ -61,7 +61,7 @@ func TestPostgresGrammar(t *testing.T) {
 		chk.NoError(err)
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
-		expect = "UPDATE foo SET\n\t\ta = $1,\n\t\tb = $2,\n\t\tc = $3\n\tWHERE\n\t\tx = $4\n\tRETURNING y, z"
+		expect = "UPDATE foo SET\n\t\ta = ?,\n\t\tb = ?,\n\t\tc = ?\n\tWHERE\n\t\tx = ?\n\tRETURNING y, z"
 		chk.Equal(expect, query.SQL)
 		chk.Equal(append(append([]string{}, columns...), keys...), query.Arguments)
 		chk.Equal([]string{"y", "z"}, query.Scan)
@@ -74,7 +74,7 @@ func TestPostgresGrammar(t *testing.T) {
 		chk.NoError(err)
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
-		expect := "DELETE FROM foo\n\tWHERE\n\t\tx = $1"
+		expect := "DELETE FROM foo\n\tWHERE\n\t\tx = ?"
 		chk.Equal(expect, query.SQL)
 		chk.Equal(append([]string{}, keys...), query.Arguments)
 		chk.Empty(query.Scan)
@@ -85,19 +85,19 @@ func TestPostgresGrammar(t *testing.T) {
 		chk.NoError(err)
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
-		expect = "DELETE FROM foo\n\tWHERE\n\t\tx = $1 AND y = $2 AND z = $3"
+		expect = "DELETE FROM foo\n\tWHERE\n\t\tx = ? AND y = ? AND z = ?"
 		chk.Equal(expect, query.SQL)
 		chk.Equal(append([]string{}, keys...), query.Arguments)
 		chk.Empty(query.Scan)
 	}
 }
 
-func TestPostgresReturnsErrors(t *testing.T) {
+func TestDefaultReturnsErrors(t *testing.T) {
 	chk := assert.New(t)
 	//
 	var err error
 	table, columns, keys := "mytable", []string{"a", "b", "c"}, []string{"x", "y"}
-	g := grammar.Postgres
+	g := grammar.Sqlite
 	// Missing table name.
 	_, err = g.Delete("", keys)
 	chk.Error(err)
@@ -123,10 +123,10 @@ func TestPostgresReturnsErrors(t *testing.T) {
 	chk.Error(err)
 }
 
-func TestPostgresGrammarUpsert(t *testing.T) {
+func TestDefaultGrammarUpsert(t *testing.T) {
 	chk := assert.New(t)
 	//
-	g := grammar.Postgres
+	g := grammar.Sqlite
 	{ // single key, no auto
 		columns := []string{"a", "b", "c"}
 		keys := []string{"key"}
@@ -136,10 +136,10 @@ func TestPostgresGrammarUpsert(t *testing.T) {
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
 		parts := []string{
-			"INSERT INTO foo AS dest\n\t\t( key, a, b, c )\n\tVALUES\n\t\t( $1, $2, $3, $4 )",
+			"INSERT INTO foo\n\t\t( key, a, b, c )\n\tVALUES\n\t\t( ?, ?, ?, ? )",
 			"\tON CONFLICT( key ) DO UPDATE SET",
-			"\t\ta = EXCLUDED.a, b = EXCLUDED.b, c = EXCLUDED.c",
-			"\t\tWHERE (\n\t\t\tdest.a <> EXCLUDED.a OR dest.b <> EXCLUDED.b OR dest.c <> EXCLUDED.c\n\t\t)",
+			"\t\tfoo.a = EXCLUDED.a, foo.b = EXCLUDED.b, foo.c = EXCLUDED.c",
+			"\t\tWHERE (\n\t\t\tfoo.a <> EXCLUDED.a OR foo.b <> EXCLUDED.b OR foo.c <> EXCLUDED.c\n\t\t)",
 		}
 		expect := strings.Join(parts, "\n")
 		chk.Equal(expect, query.SQL)
@@ -156,10 +156,10 @@ func TestPostgresGrammarUpsert(t *testing.T) {
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
 		parts := []string{
-			"INSERT INTO foo AS dest\n\t\t( key1, key2, key3, a, b, c )\n\tVALUES\n\t\t( $1, $2, $3, $4, $5, $6 )",
+			"INSERT INTO foo\n\t\t( key1, key2, key3, a, b, c )\n\tVALUES\n\t\t( ?, ?, ?, ?, ?, ? )",
 			"\tON CONFLICT( key1, key2, key3 ) DO UPDATE SET",
-			"\t\ta = EXCLUDED.a, b = EXCLUDED.b, c = EXCLUDED.c",
-			"\t\tWHERE (\n\t\t\tdest.a <> EXCLUDED.a OR dest.b <> EXCLUDED.b OR dest.c <> EXCLUDED.c\n\t\t)",
+			"\t\tfoo.a = EXCLUDED.a, foo.b = EXCLUDED.b, foo.c = EXCLUDED.c",
+			"\t\tWHERE (\n\t\t\tfoo.a <> EXCLUDED.a OR foo.b <> EXCLUDED.b OR foo.c <> EXCLUDED.c\n\t\t)",
 		}
 		expect := strings.Join(parts, "\n")
 		chk.Equal(expect, query.SQL)
@@ -177,10 +177,10 @@ func TestPostgresGrammarUpsert(t *testing.T) {
 		chk.NotEmpty(query.SQL)
 		chk.NotEmpty(query.Arguments)
 		parts := []string{
-			"INSERT INTO foo AS dest\n\t\t( key1, key2, key3, a, b, c )\n\tVALUES\n\t\t( $1, $2, $3, $4, $5, $6 )",
+			"INSERT INTO foo\n\t\t( key1, key2, key3, a, b, c )\n\tVALUES\n\t\t( ?, ?, ?, ?, ?, ? )",
 			"\tON CONFLICT( key1, key2, key3 ) DO UPDATE SET",
-			"\t\ta = EXCLUDED.a, b = EXCLUDED.b, c = EXCLUDED.c",
-			"\t\tWHERE (\n\t\t\tdest.a <> EXCLUDED.a OR dest.b <> EXCLUDED.b OR dest.c <> EXCLUDED.c\n\t\t)",
+			"\t\tfoo.a = EXCLUDED.a, foo.b = EXCLUDED.b, foo.c = EXCLUDED.c",
+			"\t\tWHERE (\n\t\t\tfoo.a <> EXCLUDED.a OR foo.b <> EXCLUDED.b OR foo.c <> EXCLUDED.c\n\t\t)",
 			"\tRETURNING created, modified",
 		}
 		expect := strings.Join(parts, "\n")

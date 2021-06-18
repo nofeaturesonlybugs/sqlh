@@ -8,12 +8,13 @@ type Expect int
 const (
 	ExpectNone Expect = iota
 	ExpectRow
+	ExpectRowOrNone
 	ExpectRows
 )
 
 // String returns the Expect value as a string.
 func (me Expect) String() string {
-	return [...]string{"None", "One Row", "Multiple Rows"}[me]
+	return [...]string{"None", "One Row", "One Row or None", "Multiple Rows"}[me]
 }
 
 // Query describes a SQL query.
