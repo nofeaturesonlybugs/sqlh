@@ -1,5 +1,10 @@
 /develop
 
+    + Add functions sqlh.Transact() and sqlh.TransactRollback().  Both functions ease the use
+        of database transactions by wrapping a provided function argument inside a transaction.
+        However sqlh.TransactRollback always calls tx.Rollback() to unwind the transaction, which is
+        useful for writing test cases.
+
 0.2.0
 
     + sqlh.Scanner.Select handles "no rows" for dest *T where T is a struct by setting
