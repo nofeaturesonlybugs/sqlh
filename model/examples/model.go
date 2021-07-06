@@ -39,6 +39,8 @@ func NewModels() *model.Models {
 	rv.Register(&Address{})
 	rv.Register(&Person{})
 	rv.Register(&PersonAddress{})
+	rv.Register(&Relationship{})
+	rv.Register(&Upsertable{})
 	return rv
 }
 
@@ -47,6 +49,8 @@ func init() {
 	Models.Register(&Address{})
 	Models.Register(&Person{})
 	Models.Register(&PersonAddress{})
+	Models.Register(&Relationship{})
+	Models.Register(&Upsertable{})
 }
 
 // Address is a simple model representing an address.
@@ -87,4 +91,27 @@ type PersonAddress struct {
 	//
 	PersonId  int `json:"person_id" db:"person_fk" model:"key"`
 	AddressId int `json:"address_id" db:"address_fk" model:"key"`
+}
+
+// Upsertable is a model that can use UPSERT style queries because it only
+// has "key" and not "key,auto" columns.
+type Upsertable struct {
+	model.TableName `json:"-" model:"upsertable"`
+	//
+	Id           string    `json:"id" db:"pk" model:"key"`
+	CreatedTime  time.Time `json:"created_time" db:"created_tmz" model:"inserted"`
+	ModifiedTime time.Time `json:"modified_time" db:"modified_tmz" model:"inserted,updated"`
+	String       string    `json:"string"`
+	Number       int       `json:"number"`
+}
+
+// Relationship is a model with a composite primary key and no fields that auto update.
+// Such a model might exist for relationship tables.
+type Relationship struct {
+	model.TableName `json:"-" model:"relationship"`
+	//
+	LeftId  int `json:"left_id" db:"left_fk" model:"key"`
+	RightId int `json:"right_id" db:"right_fk" model:"key"`
+	// Such a table might have other columns.
+	Toggle bool `json:"toggle"`
 }

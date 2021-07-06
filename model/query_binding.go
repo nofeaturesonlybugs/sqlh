@@ -56,9 +56,22 @@ func (me *query_binding_t) QueryOne(q sqlh.IQueries, value interface{}) error {
 	bound.Fields(me.query.Arguments, args)
 	bound.Assignables(me.query.Scan, scans)
 	//
+	// If no scans then use Exec().
+	if len(me.query.Scan) == 0 {
+		if _, err := q.Exec(me.query.SQL, args...); err != nil {
+			return errors.Go(err)
+		}
+		return nil
+	}
+	//
 	row := q.QueryRow(me.query.SQL, args...)
+	// NB: The error conditions are separated for code coverage purposes.
 	if err := row.Scan(scans...); err != nil {
-		return errors.Go(err)
+		if err != sql.ErrNoRows {
+			return errors.Go(err)
+		} else if err == sql.ErrNoRows && me.query.Expect != statements.ExpectRowOrNone {
+			return errors.Go(err)
+		}
 	}
 	return nil
 }
@@ -93,19 +106,37 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 		q = tx
 	}
 	//
+	// QueryRowFunc normalizes the query row call so the same logic can be used with or without prepared statements.
+	type ExecFunc func(args ...interface{}) (sql.Result, error)
+	type QueryRowFunc func(args ...interface{}) *sql.Row
+	var QueryRow QueryRowFunc
+	var Exec ExecFunc
+	//
 	// Use prepared statement if possible.
 	if pper, ok := q.(sqlh.IPrepares); ok {
 		if stmt, err = pper.Prepare(me.query.SQL); err != nil {
 			return errors.Go(err)
 		}
 		defer stmt.Close()
+		Exec = stmt.Exec
+		QueryRow = stmt.QueryRow
+	} else {
+		Exec = func(args ...interface{}) (sql.Result, error) {
+			return q.Exec(me.query.SQL, args...)
+		}
+		QueryRow = func(args ...interface{}) *sql.Row {
+			return q.QueryRow(me.query.SQL, args...)
+		}
+	}
+	//
+	// There's a little bit of copy+paste between both conditions.  Tread carefully when editing the similar portions.
+	if len(me.query.Scan) == 0 {
 		for k := 0; k < size; k++ {
 			bound.Rebind(v.Index(k).Interface())
 			bound.Fields(me.query.Arguments, args)
 			bound.Assignables(me.query.Scan, scans)
 			//
-			row = stmt.QueryRow(args...)
-			if err = row.Scan(scans...); err != nil {
+			if _, err = Exec(args...); err != nil {
 				return errors.Go(err)
 			}
 		}
@@ -115,12 +146,17 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 			bound.Fields(me.query.Arguments, args)
 			bound.Assignables(me.query.Scan, scans)
 			//
-			row = q.QueryRow(me.query.SQL, args...)
+			row = QueryRow(args...)
 			if err = row.Scan(scans...); err != nil {
-				return errors.Go(err)
+				if err != sql.ErrNoRows {
+					return errors.Go(err)
+				} else if err == sql.ErrNoRows && me.query.Expect != statements.ExpectRowOrNone {
+					return errors.Go(err)
+				}
 			}
 		}
 	}
+
 	//
 	// If we opened a transaction then attempt to commit.
 	if tx != nil {

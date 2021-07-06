@@ -1,5 +1,63 @@
 /develop
 
+[TODO next version -> 0.3.0]
+    + Breaking change migration (impact=low).
+        + grammar.Default renamed to grammar.Sqlite -- generated SQL is same as previous version.
+        + grammar.Grammar is now an interface where methods now return (*statements.Query, error)
+            where previously only (*statements.Query) was returned.
+        + Package grammar no longer has any panics; errors are returned instead (see previous note).
+        + model.Models.  Prior to this release Models only ran queries that had followup targets
+            for Scan() and panicked when such targets did not exist.  This release allows for queries
+            that do not have any Scan() targets and will switch to calling Exec() instead of Query() or
+            QueryRow() when necessary.  An implication of this change is that Models.Insert() and
+            Models.Update() no longer panic in the absence of Scan() targets.
+
+grammar
+    + Grammar is now an interface.
+    + Global Default renamed to Sqlite.
+    + Add PostgresGrammar.
+    + Add SqliteGrammar.
+    + Add global error vars: ErrTableRequired, ErrColumnsRequired, & ErrKeysRequired.
+        Grammar functions now return a variation of these errors indicating errors when building
+        SQL statements.
+    + Add Grammar.Upsert() to support INSERT...ON CONFLICT(...) DO UPDATE queries.
+
+hobbled
+    + Package hobbled exposes facilities for hobbling database types such as *sql.DB or *sql.Tx by removing
+        methods such as Begin() or Prepare().  This is useful when testing the dynamic nature of sqlh and its
+        subpackages that can switch logic depending on the facilities of the database type given to it when
+        performing work.
+
+model
+    + Add global error ErrUnsupported.  Models functions may return a variation of ErrUnsupported if
+        an operation is called on a type for which the SQL execution can not be performed.
+
+    + QueryBinding.QueryOne() does not return an error if database/sql returns sql.ErrNoRows
+        and Query.Expect is equal to statements.ExpectRowOrNone.
+    
+    + QueryBinding.QuerySlice() does not return an error if database/sql returns sql.ErrNoRows
+        and Query.Expect is equal to statements.ExpectRowOrNone.
+
+    + Add Models.Upsert() for models that do not have "key,auto" primary keys.  Upsert() currently
+        only supports primary keys and does not support UNIQUE indexes.
+
+    + Removed possible panics from Models.Insert() and Models.Update().
+
+    + Behavior change.  Prior to this release Models only ran queries that had followup targets
+        for Scan() and panicked when such targets did not exist.  This release allows for queries
+        that do not have any Scan() targets and will switch to calling Exec() instead of Query() or
+        QueryRow() when necessary.
+
+model/statements
+    + Add ExpectRowOrNone for queries that could return 0 or 1 rows and 0 does not indicate
+        an error.
+
+sqlh
+    + Add functions sqlh.Transact() and sqlh.TransactRollback().  Both functions ease the use
+        of database transactions by wrapping a provided function argument inside a transaction.
+        However sqlh.TransactRollback always calls tx.Rollback() to unwind the transaction, which is
+        useful for writing test cases.
+
 0.2.0
 
     + sqlh.Scanner.Select handles "no rows" for dest *T where T is a struct by setting
