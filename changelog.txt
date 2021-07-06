@@ -1,6 +1,6 @@
 /develop
 
-[TODO next version -> 0.3.0]
+0.3.0
     + Breaking change migration (impact=low).
         + grammar.Default renamed to grammar.Sqlite -- generated SQL is same as previous version.
         + grammar.Grammar is now an interface where methods now return (*statements.Query, error)
