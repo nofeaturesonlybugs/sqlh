@@ -201,3 +201,17 @@ name
 
 ## Benchmarks  
 See my sibling package `sqlhbenchmarks` for my methodology, goals, and interpretation of results.
+
+## API Consistency and Breaking Changes  
+I am making a very concerted effort to break the API as little as possible while adding features or fixing bugs.  However this software is currently in a pre-1.0.0 version and breaking changes *are* allowed under standard semver.  As the API approaches a stable 1.0.0 release I will list any such breaking changes here and they will always be signaled by a bump in *minor* version.
+
+* 0.2.0 ⭢ 0.3.0  
+    + `grammar.Default` renamed to `grammar.Sqlite` -- generated SQL is same as previous version.
+    + `grammar.Grammar` is now an interface where methods now return `(*statements.Query, error)`
+        where previously only `(*statements.Query)` was returned.
+    + Package grammar no longer has any panics; errors are returned instead (see previous note).
+    + Prior to this release `model.Models` only ran queries that had followup targets
+        for Scan() and panicked when such targets did not exist.  This release allows for queries
+        that do not have any Scan() targets and will switch to calling Exec() instead of Query() or
+        QueryRow() when necessary.  An implication of this change is that `Models.Insert()` and
+        `Models.Update()` no longer panic in the absence of Scan() targets.

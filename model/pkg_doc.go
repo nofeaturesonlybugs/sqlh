@@ -6,7 +6,7 @@
 // refer to that global instance for an instantiation example.
 //
 // Note that in the examples for this package when you see examples.Models
-// or examples.DB_Insert() it is referring the examples subdirectory for
+// or examples.Connect() it is referring the examples subdirectory for
 // this package and NOT the subdirectory for sqlh (i.e. both sqlh and sqlh/model
 // have an examples subdirectory.)
 package model

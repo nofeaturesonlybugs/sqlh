@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -19,7 +20,7 @@ type Models struct {
 	Mapper *set.Mapper
 	//
 	// Grammar defines the SQL grammar to use for SQL generation.
-	Grammar *grammar.Grammar
+	Grammar grammar.Grammar
 	//
 	// Models is a map of Go types to Model instances.  This member is automatically
 	// instantiated during calls to Register().
@@ -82,13 +83,14 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 	//		+ Primary key column names.
 	//		+ Composite primary keys (keys using multiple fields) are supported.
 	//		+ autoKeyNames are columns automatically populated by the database such as auto incrementing integer keys.
-	//	autoInsertNames, autoUpdateNames
+	//	autoInsertNames, autoUpdateNames, autoInsertUpdateNames
 	//		+ Columns automatically populated by the database such as created or modified timestamps.
+	//		+ autoInsertUpdateNames is UNIQUE( UNION( autoInsertNames, autoUpdateNames ) ).
 	//	columnNames
 	//		+ All other column names that need to be explicitly set during insert/update operations.
 	//
 	// NB: auto* columns are not currently limited to any specific type.
-	autoKeyNames, autoInsertNames, autoUpdateNames, keyNames, columnNames := []string{}, []string{}, []string{}, []string{}, []string{}
+	autoKeyNames, autoInsertNames, autoUpdateNames, autoInsertUpdateNames, keyNames, columnNames := []string{}, []string{}, []string{}, []string{}, []string{}, []string{}
 	for _, name := range mapping.Keys {
 		field := mapping.StructFields[name]
 		if field.Type == typeTableName {
@@ -117,6 +119,9 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 				}
 				if update {
 					autoUpdateNames = append(autoUpdateNames, name)
+				}
+				if insert || update {
+					autoInsertUpdateNames = append(autoInsertUpdateNames, name)
 				}
 			} else {
 				// All other columns are explicitly set during queries.
@@ -163,9 +168,11 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 		BoundMapping: me.Mapper.Bind(value),
 	}
 	// Fill in query statements.
-	model.Statements.Insert = me.Grammar.Insert(tableName, append(keyNames, columnNames...), autoInsertNames)
-	model.Statements.Update = me.Grammar.Update(tableName, columnNames, append(autoKeyNames, keyNames...), autoUpdateNames)
-	model.Statements.Delete = me.Grammar.Delete(tableName, append(autoKeyNames, keyNames...))
+	// NB: Ignore errors here as we'll handle when a query is nil for a model in our other functions.
+	model.Statements.Insert, _ = me.Grammar.Insert(tableName, append(keyNames, columnNames...), autoInsertNames)
+	model.Statements.Update, _ = me.Grammar.Update(tableName, columnNames, append(autoKeyNames, keyNames...), autoUpdateNames)
+	model.Statements.Delete, _ = me.Grammar.Delete(tableName, append(autoKeyNames, keyNames...))
+	model.Statements.Upsert, _ = me.Grammar.Upsert(tableName, columnNames, keyNames, autoInsertUpdateNames)
 	//
 	// We want to be able to look up the model by the original type T passed to this function
 	// as well as []T.
@@ -191,24 +198,18 @@ func (me *Models) Lookup(value interface{}) (m *Model, err error) {
 // Insert attempts to persist values via INSERTs.
 func (me *Models) Insert(Q sqlh.IQueries, value interface{}) error {
 	var model *Model
+	var query *statements.Query
 	var binding QueryBinding
 	var err error
 	if model, err = me.Lookup(value); err != nil {
 		return errors.Go(err)
+	} else if query = model.Statements.Insert; query == nil {
+		return errors.Go(ErrUnsupported).Tag("INSERT", fmt.Sprintf("%T", value))
 	}
 	//
-	query := model.Statements.Insert
-	if len(query.Scan) > 0 {
-		// When scan is non-empty the query uses a RETURNING clause; the QueryBinding
-		// will handle this case.
-		binding = model.BindQuery(query)
-		if err = binding.Query(Q, value); err != nil {
-			return errors.Go(err)
-		}
-	} else {
-		// TODO Currently unsupported.  Might need to use LastInsertId() + extra query to
-		// properly update record.
-		panic("Database.Insert() does not support grammars without RETURNING clauses.")
+	binding = model.BindQuery(query)
+	if err = binding.Query(Q, value); err != nil {
+		return errors.Go(err)
 	}
 	//
 	return nil
@@ -217,24 +218,44 @@ func (me *Models) Insert(Q sqlh.IQueries, value interface{}) error {
 // Update attempts to persist values via UPDATESs.
 func (me *Models) Update(Q sqlh.IQueries, value interface{}) error {
 	var model *Model
+	var query *statements.Query
 	var binding QueryBinding
 	var err error
 	if model, err = me.Lookup(value); err != nil {
 		return errors.Go(err)
+	} else if query = model.Statements.Update; query == nil {
+		return errors.Go(ErrUnsupported).Tag("UPDATE", fmt.Sprintf("%T", value))
 	}
 	//
-	query := model.Statements.Update
-	if len(query.Scan) > 0 {
-		// When scan is non-empty the query uses a RETURNING clause; the QueryBinding
-		// will handle this case.
-		binding = model.BindQuery(query)
-		if err = binding.Query(Q, value); err != nil {
-			return errors.Go(err)
-		}
-	} else {
-		// TODO Currently unsupported.  Might need to use LastInsertId() + extra query to
-		// properly update record.
-		panic("Database.Update() does not support grammars without RETURNING clauses.")
+	binding = model.BindQuery(query)
+	if err = binding.Query(Q, value); err != nil {
+		return errors.Go(err)
+	}
+	//
+	return nil
+}
+
+// Upsert attempts to persist values via UPSERTs.
+//
+// Upsert only works on primary keys that are defined as "key"; in other words columns tagged with "key,auto"
+// are not used in the generated query.
+//
+// Upsert only supports primary keys; currently there is no support for upsert on UNIQUE indexes that are
+// not primary keys.
+func (me *Models) Upsert(Q sqlh.IQueries, value interface{}) error {
+	var model *Model
+	var query *statements.Query
+	var binding QueryBinding
+	var err error
+	if model, err = me.Lookup(value); err != nil {
+		return errors.Go(err)
+	} else if query = model.Statements.Upsert; query == nil {
+		return errors.Go(ErrUnsupported).Tag("UPSERT", fmt.Sprintf("%T", value))
+	}
+	//
+	binding = model.BindQuery(query)
+	if err = binding.Query(Q, value); err != nil {
+		return errors.Go(err)
 	}
 	//
 	return nil

@@ -8,7 +8,25 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/nofeaturesonlybugs/errors"
+)
+
+// Example is a specific example.
+type Example int
+
+const (
+	ExNone Example = iota
+	ExAddressInsert
+	ExAddressInsertSlice
+	ExAddressUpdate
+	ExAddressUpdateSlice
+	ExRelationshipInsert
+	ExRelationshipInsertSlice
+	ExRelationshipUpdate
+	ExRelationshipUpdateSlice
+	ExRelationshipUpsert
+	ExRelationshipUpsertSlice
+	ExUpsert
+	ExUpsertSlice
 )
 
 // ReturnArgs creates enough return args for the specified number of models in n.
@@ -32,17 +50,13 @@ func ReturnArgs(n int, columns ...string) []driver.Value {
 	return rv
 }
 
-// DB_Insert sets up our mock database for inserting records.
-func DB_Insert(models interface{}) (*sql.DB, [][]driver.Value, error) {
-	var returning [][]driver.Value
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	if err != nil {
-		return nil, nil, err
-	}
-	switch m := models.(type) {
-	case *Address:
-		returning = append(returning, ReturnArgs(1, "pk", "created", "modified"))
-		// Set up expected query.
+// Connect creates a sqlmock DB and configures it for the example.
+func Connect(e Example) (DB *sql.DB, err error) {
+	var mock sqlmock.Sqlmock
+	DB, mock, err = sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	//
+	switch e {
+	case ExAddressInsert:
 		parts := []string{
 			"INSERT INTO addresses",
 			"\t\t( street, city, state, zip )",
@@ -50,19 +64,14 @@ func DB_Insert(models interface{}) (*sql.DB, [][]driver.Value, error) {
 			"\t\t( $1, $2, $3, $4 )",
 			"\tRETURNING pk, created_tmz, modified_tmz",
 		}
-		qu := mock.ExpectQuery(strings.Join(parts, "\n"))
-		// Set up expected args and return columns.
-		args := []driver.Value{m.Street, m.City, m.State, m.Zip}
-		rows := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"})
-		rows.AddRow(returning[0]...)
-		qu.WithArgs(args...)
-		qu.WillReturnRows(rows)
-		qu.RowsWillBeClosed()
+		rows := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+			AddRow(ReturnArgs(1, "pk", "created", "modified")...)
+		mock.ExpectQuery(strings.Join(parts, "\n")).
+			WithArgs("1234 The Street", "Small City", "ST", "98765").
+			WillReturnRows(rows).
+			RowsWillBeClosed()
 
-	case []*Address:
-		returning = append(returning, ReturnArgs(1, "pk", "created", "modified"))
-		returning = append(returning, ReturnArgs(1, "pk", "created", "modified"))
-		// Set up expected query.
+	case ExAddressInsertSlice:
 		parts := []string{
 			"INSERT INTO addresses",
 			"\t\t( street, city, state, zip )",
@@ -70,38 +79,24 @@ func DB_Insert(models interface{}) (*sql.DB, [][]driver.Value, error) {
 			"\t\t( $1, $2, $3, $4 )",
 			"\tRETURNING pk, created_tmz, modified_tmz",
 		}
-		rows1 := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"})
-		rows1.AddRow(returning[0][0], returning[0][1], returning[0][2])
-		rows2 := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"})
-		rows2.AddRow(returning[1][0], returning[1][1], returning[1][2])
-		//
 		mock.ExpectBegin()
-		prepare := mock.ExpectPrepare(strings.Join(parts, "\n"))
-		args1 := []driver.Value{m[0].Street, m[0].City, m[0].State, m[0].Zip}
-		prepare.ExpectQuery().WithArgs(args1...).WillReturnRows(rows1)
-		args2 := []driver.Value{m[1].Street, m[1].City, m[1].State, m[1].Zip}
-		prepare.ExpectQuery().WithArgs(args2...).WillReturnRows(rows2)
-		prepare.WillBeClosed()
+		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+		rows := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+			AddRow(ReturnArgs(1, "pk", "created", "modified")...)
+		prepared.ExpectQuery().
+			WithArgs("1234 The Street", "Small City", "ST", "98765").
+			WillReturnRows(rows).
+			RowsWillBeClosed()
+		rows = sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+			AddRow(ReturnArgs(1, "pk", "created", "modified")...)
+		prepared.ExpectQuery().
+			WithArgs("55 Here We Are", "Big City", "TS", "56789").
+			WillReturnRows(rows).
+			RowsWillBeClosed()
+		prepared.WillBeClosed()
 		mock.ExpectCommit()
 
-	default:
-		return nil, nil, errors.Errorf("%T not supported", models)
-	}
-	//
-	return db, returning, nil
-}
-
-// DB_Update sets up our mock database for updating records.
-func DB_Update(models interface{}) (*sql.DB, [][]driver.Value, error) {
-	var returning [][]driver.Value
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-	if err != nil {
-		return nil, nil, err
-	}
-	switch m := models.(type) {
-	case *Address:
-		returning = append(returning, ReturnArgs(1, "modified"))
-		// Set up expected query.
+	case ExAddressUpdate:
 		parts := []string{
 			"UPDATE addresses SET",
 			"\t\tstreet = $1,",
@@ -112,19 +107,14 @@ func DB_Update(models interface{}) (*sql.DB, [][]driver.Value, error) {
 			"\t\tpk = $5",
 			"\tRETURNING modified_tmz",
 		}
-		qu := mock.ExpectQuery(strings.Join(parts, "\n"))
-		// Set up expected args and return columns.
-		args := []driver.Value{m.Street, m.City, m.State, m.Zip, m.Id}
-		rows := sqlmock.NewRows([]string{"modified_tmz"})
-		rows.AddRow(returning[0]...)
-		qu.WithArgs(args...)
-		qu.WillReturnRows(rows)
-		qu.RowsWillBeClosed()
+		rows := sqlmock.NewRows([]string{"modified_tmz"}).
+			AddRow(ReturnArgs(1, "modified")...)
+		mock.ExpectQuery(strings.Join(parts, "\n")).
+			WithArgs("1234 The Street", "Small City", "ST", "98765", 42).
+			WillReturnRows(rows).
+			RowsWillBeClosed()
 
-	case []*Address:
-		returning = append(returning, ReturnArgs(1, "modified"))
-		returning = append(returning, ReturnArgs(1, "modified"))
-		// Set up expected query.
+	case ExAddressUpdateSlice:
 		parts := []string{
 			"UPDATE addresses SET",
 			"\t\tstreet = $1,",
@@ -135,23 +125,154 @@ func DB_Update(models interface{}) (*sql.DB, [][]driver.Value, error) {
 			"\t\tpk = $5",
 			"\tRETURNING modified_tmz",
 		}
-		rows1 := sqlmock.NewRows([]string{"modified_tmz"})
-		rows1.AddRow(returning[0][0])
-		rows2 := sqlmock.NewRows([]string{"modified_tmz"})
-		rows2.AddRow(returning[1][0])
-		//
 		mock.ExpectBegin()
-		prepare := mock.ExpectPrepare(strings.Join(parts, "\n"))
-		args1 := []driver.Value{m[0].Street, m[0].City, m[0].State, m[0].Zip, m[0].Id}
-		prepare.ExpectQuery().WithArgs(args1...).WillReturnRows(rows1)
-		args2 := []driver.Value{m[1].Street, m[1].City, m[1].State, m[1].Zip, m[1].Id}
-		prepare.ExpectQuery().WithArgs(args2...).WillReturnRows(rows2)
-		prepare.WillBeClosed()
+		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+		rows := sqlmock.NewRows([]string{"modified_tmz"}).
+			AddRow(ReturnArgs(1, "modified")...)
+		prepared.ExpectQuery().
+			WithArgs("1234 The Street", "Small City", "ST", "98765", 42).
+			WillReturnRows(rows).
+			RowsWillBeClosed()
+		rows = sqlmock.NewRows([]string{"modified_tmz"}).
+			AddRow(ReturnArgs(1, "modified")...)
+		prepared.ExpectQuery().
+			WithArgs("55 Here We Are", "Big City", "TS", "56789", 62).
+			WillReturnRows(rows).
+			RowsWillBeClosed()
+		prepared.WillBeClosed()
 		mock.ExpectCommit()
 
-	default:
-		return nil, nil, errors.Errorf("%T not supported", models)
+	case ExRelationshipInsert:
+		parts := []string{
+			"INSERT INTO relationship",
+			"\t\t( left_fk, right_fk, toggle )",
+			"\tVALUES",
+			"\t\t( $1, $2, $3 )",
+		}
+		mock.ExpectExec(strings.Join(parts, "\n")).WithArgs(1, 10, false).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	case ExRelationshipInsertSlice:
+		parts := []string{
+			"INSERT INTO relationship",
+			"\t\t( left_fk, right_fk, toggle )",
+			"\tVALUES",
+			"\t\t( $1, $2, $3 )",
+		}
+		mock.ExpectBegin()
+		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+		prepared.ExpectExec().WithArgs(1, 10, false).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.ExpectExec().WithArgs(2, 20, true).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.ExpectExec().WithArgs(3, 30, false).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.WillBeClosed()
+		mock.ExpectCommit()
+
+	case ExRelationshipUpdate:
+		parts := []string{
+			"UPDATE relationship SET",
+			"\t\ttoggle = $1",
+			"\tWHERE",
+			"\t\tleft_fk = $2 AND right_fk = $3",
+		}
+		mock.ExpectExec(strings.Join(parts, "\n")).WithArgs(true, 1, 10).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	case ExRelationshipUpdateSlice:
+		parts := []string{
+			"UPDATE relationship SET",
+			"\t\ttoggle = $1",
+			"\tWHERE",
+			"\t\tleft_fk = $2 AND right_fk = $3",
+		}
+		mock.ExpectBegin()
+		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+		prepared.ExpectExec().WithArgs(true, 1, 10).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.ExpectExec().WithArgs(false, 2, 20).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.ExpectExec().WithArgs(true, 3, 30).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.WillBeClosed()
+		mock.ExpectCommit()
+
+	case ExRelationshipUpsert:
+		parts := []string{
+			"INSERT INTO relationship AS dest",
+			"\t\t( left_fk, right_fk, toggle )",
+			"\tVALUES",
+			"\t\t( $1, $2, $3 )",
+			"\tON CONFLICT( left_fk, right_fk ) DO UPDATE SET",
+			"\t\ttoggle = EXCLUDED.toggle",
+			"\t\tWHERE (",
+			"\t\t\tdest.toggle <> EXCLUDED.toggle",
+			"\t\t)",
+		}
+		mock.ExpectExec(strings.Join(parts, "\n")).WithArgs(1, 10, false).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	case ExRelationshipUpsertSlice:
+		parts := []string{
+			"INSERT INTO relationship AS dest",
+			"\t\t( left_fk, right_fk, toggle )",
+			"\tVALUES",
+			"\t\t( $1, $2, $3 )",
+			"\tON CONFLICT( left_fk, right_fk ) DO UPDATE SET",
+			"\t\ttoggle = EXCLUDED.toggle",
+			"\t\tWHERE (",
+			"\t\t\tdest.toggle <> EXCLUDED.toggle",
+			"\t\t)",
+		}
+		mock.ExpectBegin()
+		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+		prepared.ExpectExec().WithArgs(1, 10, false).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.ExpectExec().WithArgs(2, 20, true).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.ExpectExec().WithArgs(3, 30, false).WillReturnResult(sqlmock.NewResult(0, 1))
+		prepared.WillBeClosed()
+		mock.ExpectCommit()
+
+	case ExUpsert:
+		parts := []string{
+			"INSERT INTO upsertable AS dest",
+			"\t\t( pk, string, number )",
+			"\tVALUES",
+			"\t\t( $1, $2, $3 )",
+			"\tON CONFLICT( pk ) DO UPDATE SET",
+			"\t\tstring = EXCLUDED.string, number = EXCLUDED.number",
+			"\t\tWHERE (",
+			"\t\t\tdest.string <> EXCLUDED.string OR dest.number <> EXCLUDED.number",
+			"\t\t)",
+			"\tRETURNING created_tmz, modified_tmz",
+		}
+		qu := mock.ExpectQuery(strings.Join(parts, "\n"))
+		rows := sqlmock.NewRows([]string{"created_tmz", "modified_tmz"})
+		rows.AddRow(ReturnArgs(1, "created", "modified")...)
+		qu.WithArgs("some-unique-string", "Hello, World!", 42)
+		qu.WillReturnRows(rows)
+		qu.RowsWillBeClosed()
+
+	case ExUpsertSlice:
+		parts := []string{
+			"INSERT INTO upsertable AS dest",
+			"\t\t( pk, string, number )",
+			"\tVALUES",
+			"\t\t( $1, $2, $3 )",
+			"\tON CONFLICT( pk ) DO UPDATE SET",
+			"\t\tstring = EXCLUDED.string, number = EXCLUDED.number",
+			"\t\tWHERE (",
+			"\t\t\tdest.string <> EXCLUDED.string OR dest.number <> EXCLUDED.number",
+			"\t\t)",
+			"\tRETURNING created_tmz, modified_tmz",
+		}
+		mock.ExpectBegin()
+		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+		rows := sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
+			AddRow(ReturnArgs(1, "created", "modified")...)
+		prepared.ExpectQuery().
+			WithArgs("some-unique-string", "Hello, World!", 42).
+			WillReturnRows(rows)
+		rows = sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
+			AddRow(ReturnArgs(1, "created", "modified")...)
+		prepared.ExpectQuery().
+			WithArgs("other-unique-string", "Goodbye, World!", 10).
+			WillReturnRows(rows)
+		prepared.WillBeClosed()
+		mock.ExpectCommit()
+
 	}
 	//
-	return db, returning, nil
+	return DB, err
 }

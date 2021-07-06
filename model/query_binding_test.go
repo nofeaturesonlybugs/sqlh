@@ -197,3 +197,254 @@ func TestQueryBinding_NoPrepares(t *testing.T) {
 		chk.Error(err)
 	}
 }
+
+func TestQueryBinding_QueryOne(t *testing.T) {
+	chk := assert.New(t)
+	//
+	//
+	db, mock, err := sqlmock.New()
+	chk.NotNil(db)
+	chk.NotNil(mock)
+	chk.NoError(err)
+	//
+	type Person struct {
+		model.TableName `model:"people"`
+		Id              int `model:"key,auto"`
+		First           string
+		Last            string
+	}
+	models := model.Models{
+		Grammar: grammar.Postgres,
+		Mapper:  &set.Mapper{},
+	}
+	models.Register(&Person{})
+	modelptr, err := models.Lookup(&Person{})
+	chk.NoError(err)
+	//
+	qu := &statements.Query{
+		SQL:       "INSERT",
+		Arguments: []string{"First", "Last"},
+		Scan:      []string{"Id"},
+		Expect:    statements.ExpectRow,
+	}
+	{
+		// Query expects one row and gets one row.
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).AddRow(10))
+		person := &Person{}
+		err = bound.QueryOne(db, person)
+		chk.NoError(err)
+		chk.Equal(10, person.Id)
+	}
+	{
+		// Query expects one row and gets no rows.
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}))
+		person := &Person{}
+		err = bound.QueryOne(db, person)
+		chk.Error(err)
+		chk.Equal(0, person.Id)
+	}
+	{
+		// Query expects one row or none and gets no rows.
+		qu.Expect = statements.ExpectRowOrNone
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}))
+		person := &Person{Id: 10}
+		err = bound.QueryOne(db, person)
+		chk.NoError(err)
+		chk.Equal(10, person.Id)
+	}
+}
+
+func TestQueryBinding_QuerySlice_WithPrepare_ExpectRow_GetNone(t *testing.T) {
+	chk := assert.New(t)
+	//
+	//
+	db, mock, err := sqlmock.New()
+	chk.NotNil(db)
+	chk.NotNil(mock)
+	chk.NoError(err)
+	//
+	type Person struct {
+		model.TableName `model:"people"`
+		Id              int `model:"key,auto"`
+		First           string
+		Last            string
+	}
+	models := model.Models{
+		Grammar: grammar.Postgres,
+		Mapper:  &set.Mapper{},
+	}
+	models.Register(&Person{})
+	modelptr, err := models.Lookup([]*Person{})
+	chk.NoError(err)
+	//
+	qu := &statements.Query{
+		SQL:       "INSERT",
+		Arguments: []string{"First", "Last"},
+		Scan:      []string{"Id"},
+		Expect:    statements.ExpectRow,
+	}
+	{
+		// Query expects one row and gets no rows.
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectBegin()
+		stmt := mock.ExpectPrepare("INSERT+")
+		stmt.ExpectQuery().WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
+		mock.ExpectRollback()
+		people := []*Person{{}, {}}
+		err = bound.QuerySlice(db, people)
+		chk.Error(err)
+		chk.Equal(0, people[0].Id)
+		chk.Equal(0, people[1].Id)
+		chk.NoError(mock.ExpectationsWereMet())
+	}
+}
+
+func TestQueryBinding_QuerySlice_WithPrepare_ExpectRowOrNone_GetNone(t *testing.T) {
+	chk := assert.New(t)
+	//
+	//
+	db, mock, err := sqlmock.New()
+	chk.NotNil(db)
+	chk.NotNil(mock)
+	chk.NoError(err)
+	//
+	type Person struct {
+		model.TableName `model:"people"`
+		Id              int `model:"key,auto"`
+		First           string
+		Last            string
+	}
+	models := model.Models{
+		Grammar: grammar.Postgres,
+		Mapper:  &set.Mapper{},
+	}
+	models.Register(&Person{})
+	modelptr, err := models.Lookup([]*Person{})
+	chk.NoError(err)
+	//
+	qu := &statements.Query{
+		SQL:       "INSERT",
+		Arguments: []string{"First", "Last"},
+		Scan:      []string{"Id"},
+		Expect:    statements.ExpectRowOrNone,
+	}
+	{
+		// Query expects one row and gets no rows.
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectBegin()
+		stmt := mock.ExpectPrepare("INSERT+")
+		stmt.ExpectQuery().WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
+		stmt.ExpectQuery().WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
+		mock.ExpectCommit()
+		people := []*Person{{}, {}}
+		err = bound.QuerySlice(db, people)
+		chk.NoError(err)
+		chk.Equal(0, people[0].Id)
+		chk.Equal(0, people[1].Id)
+		chk.NoError(mock.ExpectationsWereMet())
+	}
+}
+
+func TestQueryBinding_QuerySlice_NoPrepare_ExpectRow_GetNone(t *testing.T) {
+	chk := assert.New(t)
+	//
+	//
+	db, mock, err := sqlmock.New()
+	chk.NotNil(db)
+	chk.NotNil(mock)
+	chk.NoError(err)
+	noprepare := &no_prepare_db{db}
+	//
+	type Person struct {
+		model.TableName `model:"people"`
+		Id              int `model:"key,auto"`
+		First           string
+		Last            string
+	}
+	models := model.Models{
+		Grammar: grammar.Postgres,
+		Mapper:  &set.Mapper{},
+	}
+	models.Register(&Person{})
+	modelptr, err := models.Lookup([]*Person{})
+	chk.NoError(err)
+	//
+	qu := &statements.Query{
+		SQL:       "INSERT",
+		Arguments: []string{"First", "Last"},
+		Scan:      []string{"Id"},
+		Expect:    statements.ExpectRow,
+	}
+	{
+		// Query expects one row and gets no rows.
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
+		people := []*Person{{}, {}}
+		err = bound.QuerySlice(noprepare, people)
+		chk.Error(err)
+		chk.Equal(0, people[0].Id)
+		chk.Equal(0, people[1].Id)
+		chk.NoError(mock.ExpectationsWereMet())
+	}
+}
+
+func TestQueryBinding_QuerySlice_NoPrepare_ExpectRowOrNone_GetNone(t *testing.T) {
+	chk := assert.New(t)
+	//
+	//
+	db, mock, err := sqlmock.New()
+	chk.NotNil(db)
+	chk.NotNil(mock)
+	chk.NoError(err)
+	noprepare := &no_prepare_db{db}
+	//
+	type Person struct {
+		model.TableName `model:"people"`
+		Id              int `model:"key,auto"`
+		First           string
+		Last            string
+	}
+	models := model.Models{
+		Grammar: grammar.Postgres,
+		Mapper:  &set.Mapper{},
+	}
+	models.Register(&Person{})
+	modelptr, err := models.Lookup([]*Person{})
+	chk.NoError(err)
+	//
+	qu := &statements.Query{
+		SQL:       "INSERT",
+		Arguments: []string{"First", "Last"},
+		Scan:      []string{"Id"},
+		Expect:    statements.ExpectRowOrNone,
+	}
+	{
+		// Query expects one row and gets no rows.
+		bound := modelptr.BindQuery(qu)
+		chk.NotNil(bound)
+		// If query errors.
+		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
+		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
+		people := []*Person{{}, {}}
+		err = bound.QuerySlice(noprepare, people)
+		chk.NoError(err)
+		chk.Equal(0, people[0].Id)
+		chk.Equal(0, people[1].Id)
+		chk.NoError(mock.ExpectationsWereMet())
+	}
+}
