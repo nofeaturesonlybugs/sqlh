@@ -45,6 +45,7 @@ func (me ModelQueryTestSlice) Tests() []Test {
 				return func(t *testing.T) {
 					chk := assert.New(t)
 					dbm, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+					chk.NoError(err)
 					//
 					db := qt.DBWrapper.WrapDB(dbm)
 					qt.MockFn(mock)
