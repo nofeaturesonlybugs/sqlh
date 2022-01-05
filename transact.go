@@ -22,6 +22,7 @@ func Transact(Q IQueries, fn func(Q IQueries) error) error {
 		if txnErr = T.Rollback(); txnErr != nil {
 			err.(errors.Error).Tag("transaction-rollback", txnErr.Error())
 		}
+		return err
 	} else if err = T.Commit(); err != nil {
 		return errors.Go(err)
 	}
