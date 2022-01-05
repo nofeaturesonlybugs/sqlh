@@ -111,7 +111,8 @@ if err != nil {
 The development of `sqlh` is essentially following my specific pain points when using `database/sql`:  
 
 * ✓ `SELECT ⭢ for rows.Next() ⭢ row.Scan()` : covered by `sqlh.Scanner`.
-* ✓ `INSERT|UPDATE` CRUD statements : covered by `model.Models`.
+* ✓ `INSERT|UPDATE|UPSERT` CRUD statements : covered by `model.Models`.
+  + `UPSERT` currently supports conflict from primary key; conflicts on arbitrary unique indexes not supported.
 * ⭴ `DELETE` CRUD statements : to be covered by `model.Models`.
 * ⭴ `UPSERT` type operations using index information : to be covered by `model.Models`.
 * ⭴ `Find()` or `Filter()` for advanced `WHERE` clauses and model selection.
@@ -205,6 +206,12 @@ See my sibling package `sqlhbenchmarks` for my methodology, goals, and interpret
 ## API Consistency and Breaking Changes  
 I am making a very concerted effort to break the API as little as possible while adding features or fixing bugs.  However this software is currently in a pre-1.0.0 version and breaking changes *are* allowed under standard semver.  As the API approaches a stable 1.0.0 release I will list any such breaking changes here and they will always be signaled by a bump in *minor* version.
 
+* 0.3.0 ⭢ 0.4.0  
+    + `Transact(fn)` was correctly rolling the transaction back if `fn` returned `err != nil`; however
+        the error from `fn` and any potential error from the rollback were not returned from `Transact()`.
+        This is fixed in `0.4.0` and while technically a bug fix it *also* changes the behavior of `Transact()`
+        to (correctly) return errors as it should have been doing.  As this is a potentially breaking change
+        in behavior I have bumped the minor version for this patch.
 * 0.2.0 ⭢ 0.3.0  
     + `grammar.Default` renamed to `grammar.Sqlite` -- generated SQL is same as previous version.
     + `grammar.Grammar` is now an interface where methods now return `(*statements.Query, error)`
