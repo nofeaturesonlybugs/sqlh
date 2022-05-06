@@ -80,7 +80,7 @@ func (me *query_binding_t) QueryOne(q sqlh.IQueries, value interface{}) error {
 func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error {
 	v := reflect.ValueOf(values)
 	if v.Kind() != reflect.Slice {
-		return errors.Errorf("values expects a slice; got %T", values)
+		return errors.Errorf("values expects a slice; got %T", values) // TODO+NB Sentinal error
 	}
 	// Size of slice will be helpful here.
 	size := v.Len()

@@ -4,8 +4,113 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nofeaturesonlybugs/set"
+
+	"github.com/nofeaturesonlybugs/sqlh/grammar"
+	"github.com/nofeaturesonlybugs/sqlh/model"
 	"github.com/nofeaturesonlybugs/sqlh/model/examples"
 )
+
+func ExampleModels_Register() {
+	// This example demonstrates model registration.
+
+	var Models *model.Models = &model.Models{
+		// Mapper and its fields control how Go structs are traversed and mapped to
+		// database column names.
+		Mapper: &set.Mapper{
+			Join: "_",
+			Tags: []string{"db", "json"},
+		},
+		Grammar: grammar.Postgres,
+
+		// StructTag defines the tag name to use when inspecting models.
+		// StructTag: "", // Blank defaults to "model"
+	}
+
+	//
+	// Simple model examples
+	//
+
+	// tablename=strings
+	//	strings.pk    ↣ auto incrementing key
+	//	strings.value
+	type StringModel struct {
+		// This field specifies the table name in the database.
+		//   json:"-" tells encoding/json to ignore this field when marshalling
+		//   model:"strings" means the table name is "strings" in the database.
+		model.TableName `json:"-" model:"strings"`
+
+		// An auto incrementing primary key field.
+		//
+		// The mapper is configured to use `db` tag before `json` tag;
+		// therefore this maps to strings.pk in the database but json
+		// marshals as id
+		//
+		//  `json:"id" db:"pk" model:"key,auto"`
+		//                                 ^-- auto incrementing
+		//                              ^-- field is the key or part of composite key
+		//                 ^-- maps to strings.pk column
+		//          ^-- json marshals to id
+		Id int `json:"id" db:"pk" model:"key,auto"`
+
+		// json marshals as value
+		// maps to database column strings.value
+		Value string `json:"value"`
+	}
+
+	// tablename=numbers
+	//  numbers.pk    ↣ auto incrementing key
+	//  numbers.value
+	type NumberModel struct {
+		// This model does not include the model.TableName embed; the table name
+		// must be specified during registration (see below).
+		// model.TableName `json:"-" model:"numbers"`
+
+		Id    int `json:"id" db:"pk" model:"key,auto"`
+		Value int `json:"value"`
+	}
+
+	// tablename=companies
+	//  companies.pk        ↣ auto incrementing key
+	//  companies.created   ↣ updates on INSERT
+	//  companies.modified  ↣ updates on INSERT and UPDATE
+	//  companies.name
+	type CompanyModel struct {
+		Id int `json:"id" db:"pk" model:"key,auto"`
+
+		// Models can have fields that update during INSERT or UPDATE statements.
+		//  `json:"created" model:"inserted"`
+		//                           ^-- this column updates on insert
+		//  `json:"modified" model:"inserted,updated"`
+		//                           ^-- this column updates on insert and updates
+		CreatedTime  time.Time `json:"created" model:"inserted"`
+		ModifiedTime time.Time `json:"modified" model:"inserted,updated"`
+
+		Name int `json:"name"`
+	}
+
+	//
+	// Model registration
+	//  + Models must be registered as pointers or a panic occurs.
+	//  + Models that embed model.TableName do not need to specify the tablename during registration.
+	Models.Register(&StringModel{})
+	Models.Register(&NumberModel{}, model.TableName("numbers"))
+	Models.Register(&CompanyModel{}, model.TableName("companies"))
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Registering a non-pointer panics.")
+			}
+		}()
+		Models.Register(StringModel{})
+	}()
+
+	fmt.Println("all done")
+
+	// Output: Registering a non-pointer panics.
+	// all done
+}
 
 func ExampleModels_insert() {
 	var zero time.Time

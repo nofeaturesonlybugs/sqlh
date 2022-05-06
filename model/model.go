@@ -16,12 +16,12 @@ type Model struct {
 	Statements statements.Table
 
 	// V is a *set.Value of a model instance M.
-	V *set.Value
+	V set.Value
 	// VSlice is a *set.Value of a model slice []M.
-	VSlice *set.Value
+	VSlice set.Value
 
 	// Mapping is the column to struct field mapping.
-	Mapping *set.Mapping
+	Mapping set.Mapping
 
 	// BoundMapping is a cached BoundMapping of a zero value for
 	// the model.  Gathering query arguments and scan targets will

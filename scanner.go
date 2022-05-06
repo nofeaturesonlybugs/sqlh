@@ -31,7 +31,7 @@ type Scanner struct {
 }
 
 // inspectValue inspects a query destination and determines if it can be used.
-func (me *Scanner) inspectValue(dest interface{}) (V *set.Value, T scannerDestType, err error) {
+func (me *Scanner) inspectValue(dest interface{}) (V set.Value, T scannerDestType, err error) {
 	T = destInvalid
 	if dest == nil {
 		err = errors.Errorf("dest is nil")
@@ -86,6 +86,7 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 
 	case destStruct:
 		var rows *sql.Rows
+		var bound set.BoundMapping
 		var columns []string
 		var err error
 		// Why not QueryRow()?  Because *sql.Row does not allow use to get the list of columns which we
@@ -97,7 +98,9 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 		if columns, err = rows.Columns(); err != nil {
 			return errors.Go(err)
 		}
-		bound := me.Mapper.Bind(dest)
+		if bound, err = me.Mapper.Bind(dest); err != nil {
+			return errors.Go(err)
+		}
 		assignables := make([]interface{}, len(columns))
 		if rows.Next() {
 			if _, err = bound.Assignables(columns, assignables); err != nil {
@@ -134,10 +137,11 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 }
 
 // scanRows scans rows is the internal scanRows that assumes dest is safe.
-func (me *Scanner) scanRows(R IIterates, dest interface{}, V *set.Value, T scannerDestType) error {
+func (me *Scanner) scanRows(R IIterates, dest interface{}, V set.Value, T scannerDestType) error {
 	if R != nil {
 		defer R.Close()
 	}
+	var bound set.BoundMapping
 	var columns []string
 	var err error
 	//
@@ -175,7 +179,9 @@ func (me *Scanner) scanRows(R IIterates, dest interface{}, V *set.Value, T scann
 		// V is a slice; E is then an element instance that can be appended to V.
 		e := reflect.New(V.ElemType).Interface()
 		E := set.V(e)
-		bound := me.Mapper.Bind(e)
+		if bound, err = me.Mapper.Bind(e); err != nil {
+			return errors.Go(err)
+		}
 		// Want to use our existing bound element; otherwise we're creating and discarding one.
 		if R.Next() {
 			if _, err = bound.Assignables(columns, assignables); err != nil {
