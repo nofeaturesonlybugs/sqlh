@@ -242,7 +242,9 @@ func ExampleScanner_Select_structNotFound() {
 	}
 	scanner := sqlh.Scanner{
 		Mapper: &set.Mapper{
-			Tags: []string{"db", "json"},
+			Elevated: set.NewTypeList(Common{}),
+			Tags:     []string{"db", "json"},
+			Join:     "_",
 		},
 	}
 	query := `
@@ -254,7 +256,7 @@ func ExampleScanner_Select_structNotFound() {
 		inner join customers c on s.customer_id = c.id
 		inner join vendors v on s.vendor_id = v.id
 	`
-	// When destination is a poiner to struct and no rows are found then the dest pointer
+	// When destination is a pointer to struct and no rows are found then the dest pointer
 	// remains nil and no error is returned.
 	var dest *Sale
 	err = scanner.Select(db, &dest, query)
