@@ -158,7 +158,7 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 		Columns: columns,
 	}
 	// Create model struct.
-	bound, err := me.Mapper.Bind(value)
+	prepared, err := me.Mapper.Prepare(value)
 	if err != nil {
 		panic(err.Error()) // TODO+NB Better message?
 	}
@@ -168,8 +168,8 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 		V:          set.V(value),
 		VSlice:     set.V(reflect.Indirect(reflect.New(reflect.SliceOf(typ))).Interface()),
 
-		Mapping:      mapping,
-		BoundMapping: bound,
+		Mapping:         mapping,
+		PreparedMapping: prepared,
 	}
 	// Fill in query statements.
 	// NB: Ignore errors here as we'll handle when a query is nil for a model in our other functions.

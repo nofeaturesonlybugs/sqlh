@@ -51,10 +51,12 @@ func (me *query_binding_t) Query(q sqlh.IQueries, value interface{}) error {
 
 // QueryOne runs the query against a single instance of the model.
 func (me *query_binding_t) QueryOne(q sqlh.IQueries, value interface{}) error {
-	bound, args, scans := me.model.BoundMapping.Copy(), make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
-	bound.Rebind(value)
-	bound.Fields(me.query.Arguments, args)
-	bound.Assignables(me.query.Scan, scans)
+	prepared, args, scans := me.model.PreparedMapping.Copy(), make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
+	prepared.Rebind(value)
+	prepared.Plan(me.query.Arguments...) // TODO+NB Error
+	prepared.Fields(args)                // TODO+NB Error
+	prepared.Plan(me.query.Scan...)      // TODO+NB Error
+	prepared.Assignables(scans)          // TODO+NB Error
 	//
 	// If no scans then use Exec().
 	if len(me.query.Scan) == 0 {
@@ -95,7 +97,10 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 	var row *sql.Row
 	var err error
 	//
-	bound, args, scans := me.model.BoundMapping.Copy(), make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
+	preparedArgs, preparedScans := me.model.PreparedMapping.Copy(), me.model.PreparedMapping.Copy()
+	preparedArgs.Plan(me.query.Arguments...) // TODO+NB error
+	preparedScans.Plan(me.query.Scan...)     // TODO+NB error
+	args, scans := make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
 	//
 	// If original parameter supports transactions...
 	if txer, ok := q.(sqlh.IBegins); ok {
@@ -132,9 +137,11 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 	// There's a little bit of copy+paste between both conditions.  Tread carefully when editing the similar portions.
 	if len(me.query.Scan) == 0 {
 		for k := 0; k < size; k++ {
-			bound.Rebind(v.Index(k).Interface())
-			bound.Fields(me.query.Arguments, args)
-			bound.Assignables(me.query.Scan, scans)
+			elem := v.Index(k)
+			preparedArgs.Rebind(elem)
+			preparedArgs.Fields(args)
+			preparedScans.Rebind(elem)       // TODO scans not used here???
+			preparedScans.Assignables(scans) // TODO scans not used here???
 			//
 			if _, err = Exec(args...); err != nil {
 				return errors.Go(err)
@@ -142,9 +149,11 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 		}
 	} else {
 		for k := 0; k < size; k++ {
-			bound.Rebind(v.Index(k).Interface())
-			bound.Fields(me.query.Arguments, args)
-			bound.Assignables(me.query.Scan, scans)
+			elem := v.Index(k).Interface()
+			preparedArgs.Rebind(elem)
+			preparedArgs.Fields(args)
+			preparedScans.Rebind(elem)
+			preparedScans.Assignables(scans)
 			//
 			row = QueryRow(args...)
 			if err = row.Scan(scans...); err != nil {

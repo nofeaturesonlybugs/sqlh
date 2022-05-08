@@ -23,14 +23,14 @@ type Model struct {
 	// Mapping is the column to struct field mapping.
 	Mapping set.Mapping
 
-	// BoundMapping is a cached BoundMapping of a zero value for
+	// PreparedMapping is a cached PreparedMapping of a zero value for
 	// the model.  Gathering query arguments and scan targets will
 	// be faster when executing queries by performing the following:
-	//	cp := Model.BoundMapping.Copy() // Copy the cached BoundMapping.
-	//	cp.Rebind( modelInstance ) 		// Bind the copy to an instance of the model.
-	//	cp.Fields( ... )				// Get a slice of query arguments by column name.
-	//	cp.Assignable( ... )			// Get a slice of scan targets by column name.
-	BoundMapping set.BoundMapping
+	//	cp := Model.PreparedMapping.Copy()  // Copy the cached PreparedMapping.
+	//	cp.Rebind( modelInstance )          // Bind the copy to an instance of the model.
+	//	cp.Fields( ... )                    // Get a slice of query arguments by column name.
+	//	cp.Assignable( ... )                // Get a slice of scan targets by column name.
+	PreparedMapping set.PreparedMapping
 }
 
 // NewInstance creates an instance of the model's zero value.

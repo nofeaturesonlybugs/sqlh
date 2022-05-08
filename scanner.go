@@ -86,10 +86,10 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 
 	case destStruct:
 		var rows *sql.Rows
-		var bound set.BoundMapping
+		var prepared set.PreparedMapping
 		var columns []string
 		var err error
-		// Why not QueryRow()?  Because *sql.Row does not allow use to get the list of columns which we
+		// Why not QueryRow()?  Because *sql.Row does not allow us to get the list of columns which we
 		// need for our dynamic Scan().
 		if rows, err = Q.Query(query, args...); err != nil {
 			return errors.Go(err)
@@ -98,16 +98,19 @@ func (me *Scanner) Select(Q IQueries, dest interface{}, query string, args ...in
 		if columns, err = rows.Columns(); err != nil {
 			return errors.Go(err)
 		}
-		if bound, err = me.Mapper.Bind(dest); err != nil {
+		//
+		// Get a prepared mapping and prepare the access plan.  Note that if prepared.Plan()
+		// succeeds we know future calls to prepared.Assignables() will succeed and do not
+		// need to check those errors.
+		if prepared, err = me.Mapper.Prepare(dest); err != nil {
+			return errors.Go(err)
+		} else if err = prepared.Plan(columns...); err != nil {
 			return errors.Go(err)
 		}
 		assignables := make([]interface{}, len(columns))
 		if rows.Next() {
-			if _, err = bound.Assignables(columns, assignables); err != nil {
-				// An error here indicates an unknown column is in the result set; i.e. a column for
-				// which there is no mapping.
-				return errors.Go(err)
-			} else if err = rows.Scan(assignables...); err != nil {
+			_, _ = prepared.Assignables(assignables)
+			if err = rows.Scan(assignables...); err != nil {
 				return errors.Go(err)
 			}
 		} else {
@@ -141,7 +144,7 @@ func (me *Scanner) scanRows(R IIterates, dest interface{}, V set.Value, T scanne
 	if R != nil {
 		defer R.Close()
 	}
-	var bound set.BoundMapping
+	var prepared set.PreparedMapping
 	var columns []string
 	var err error
 	//
@@ -177,40 +180,43 @@ func (me *Scanner) scanRows(R IIterates, dest interface{}, V set.Value, T scanne
 		//
 		assignables := make([]interface{}, len(columns))
 		// V is a slice; E is then an element instance that can be appended to V.
-		e := reflect.New(V.ElemType).Interface()
-		E := set.V(e)
-		if bound, err = me.Mapper.Bind(e); err != nil {
+		e := reflect.New(V.ElemType)
+		// Create new empty slice to reflect.Append(slice, elem) to.  Note on the way
+		// out of the function we must assign this slice to V.WriteValue.
+		slice := reflect.New(V.Type).Elem()
+		//
+		// Get a prepared mapping and prepare the access plan.  Note that if prepared.Plan()
+		// succeeds we know future calls to prepared.Assignables() will succeed and do not
+		// need to check those errors.
+		if prepared, err = me.Mapper.Prepare(e); err != nil {
+			return errors.Go(err)
+		} else if err = prepared.Plan(columns...); err != nil {
 			return errors.Go(err)
 		}
+		//
 		// Want to use our existing bound element; otherwise we're creating and discarding one.
 		if R.Next() {
-			if _, err = bound.Assignables(columns, assignables); err != nil {
-				// An error here indicates an unknown column is in the result set; i.e. a column for
-				// which there is no mapping.
-				return errors.Go(err)
-			} else if err = R.Scan(assignables...); err != nil {
-				return errors.Go(err)
-			}
-			// While this *can* panic it *should never* panic.  Famous last words.
-			set.Panics.Append(V, E)
-		}
-		for R.Next() {
-			// Create new element E; ignore error because we already know the call succeeds.
-			e = reflect.New(V.ElemType).Interface()
-			E.Rebind(e)
-			bound.Rebind(e)
-			// Get the assignable interface{} values; again we already know the call succeeds.
-			bound.Assignables(columns, assignables)
+			_, _ = prepared.Assignables(assignables)
 			if err = R.Scan(assignables...); err != nil {
 				return errors.Go(err)
 			}
-			// While this *can* panic it *should never* panic.  Second famous last words.
-			set.Panics.Append(V, E)
+			slice = reflect.Append(slice, e.Elem())
+		}
+		for R.Next() {
+			// Create new element E; ignore error because we already know the call succeeds.
+			e = reflect.New(V.ElemType)
+			prepared.Rebind(e)
+			// Get the assignable values; again we already know the call succeeds.
+			_, _ = prepared.Assignables(assignables)
+			if err = R.Scan(assignables...); err != nil {
+				return errors.Go(err)
+			}
+			slice = reflect.Append(slice, e.Elem())
 		}
 		if err = R.Err(); err != nil {
 			return errors.Go(err)
 		}
-
+		V.WriteValue.Set(slice) // Don't forget to assign the slice we made to caller's dest.
 	}
 
 	return nil
