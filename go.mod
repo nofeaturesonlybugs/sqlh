@@ -8,3 +8,5 @@ require (
 	github.com/nofeaturesonlybugs/set v0.3.0
 	github.com/stretchr/testify v1.7.0
 )
+
+replace github.com/nofeaturesonlybugs/set v0.3.0 => ../set

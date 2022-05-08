@@ -38,11 +38,7 @@ func TestQueryBinding(t *testing.T) {
 	chk.NoError(err)
 	//
 	mdb := examples.NewModels()
-	mdb.Register(examples.Person{})
 	//
-	model, err := mdb.Lookup(examples.Person{})
-	chk.NoError(err)
-	chk.NotNil(model)
 	modelptr, err := mdb.Lookup(&examples.Person{})
 	chk.NoError(err)
 	chk.NotNil(modelptr)
@@ -106,25 +102,6 @@ func TestQueryBinding(t *testing.T) {
 		err = bound.QuerySlice(db, []*examples.Person{{}, {}})
 		chk.Error(err)
 	}
-	{
-		// Check errors with Query, QueryOne, and QuerySlice when non-pointer.
-		qu := &statements.Query{
-			SQL:       "INSERT",
-			Arguments: []string{"first", "last"},
-			Scan:      []string{"pk"},
-		}
-		bound := model.BindQuery(qu)
-		chk.NotNil(bound)
-		//
-		err = bound.QueryOne(db, examples.Person{})
-		chk.Error(err)
-		//
-		mock.ExpectBegin()
-		mock.ExpectPrepare("INSERT+")
-		mock.ExpectRollback()
-		err = bound.QuerySlice(db, []examples.Person{{}, {}})
-		chk.Error(err)
-	}
 }
 
 func TestQueryBinding_NoPrepares(t *testing.T) {
@@ -145,11 +122,7 @@ func TestQueryBinding_NoPrepares(t *testing.T) {
 		Grammar: grammar.Postgres,
 		Mapper:  &set.Mapper{},
 	}
-	models.Register(Person{})
 	models.Register(&Person{})
-	//
-	model, err := models.Lookup(Person{})
-	chk.NoError(err)
 	//
 	modelptr, err := models.Lookup(&Person{})
 	chk.NoError(err)
@@ -158,21 +131,6 @@ func TestQueryBinding_NoPrepares(t *testing.T) {
 		SQL:       "INSERT",
 		Arguments: []string{"First", "Last"},
 		Scan:      []string{"Id"},
-	}
-	{
-		// Check flow when queryer does not support prepared statements and the bind fails.
-		// db that can't prepare statements.
-		db := &no_prepare_db{db}
-		//
-		bound := model.BindQuery(qu)
-		chk.NotNil(bound)
-		// If query errors.
-		mock.ExpectBegin()
-		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).AddRow(10))
-		mock.ExpectQuery("INSERT+").WillReturnError(errors.Errorf("query failed"))
-		mock.ExpectRollback()
-		err = bound.QuerySlice(db, []Person{{}, {}})
-		chk.Error(err)
 	}
 	{
 		// Check flow when queryer does not support prepared statements.

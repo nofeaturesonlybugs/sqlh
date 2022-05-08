@@ -158,14 +158,18 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 		Columns: columns,
 	}
 	// Create model struct.
+	prepared, err := me.Mapper.Prepare(value)
+	if err != nil {
+		panic(err.Error()) // TODO+NB Better message?
+	}
 	model := &Model{
 		Table:      table,
 		Statements: statements.Table{},
 		V:          set.V(value),
 		VSlice:     set.V(reflect.Indirect(reflect.New(reflect.SliceOf(typ))).Interface()),
 
-		Mapping:      mapping,
-		BoundMapping: me.Mapper.Bind(value),
+		Mapping:         mapping,
+		PreparedMapping: prepared,
 	}
 	// Fill in query statements.
 	// NB: Ignore errors here as we'll handle when a query is nil for a model in our other functions.
