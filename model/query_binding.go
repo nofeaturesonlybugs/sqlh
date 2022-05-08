@@ -51,12 +51,20 @@ func (me *query_binding_t) Query(q sqlh.IQueries, value interface{}) error {
 
 // QueryOne runs the query against a single instance of the model.
 func (me *query_binding_t) QueryOne(q sqlh.IQueries, value interface{}) error {
-	prepared, args, scans := me.model.PreparedMapping.Copy(), make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
+	args, scans := make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
+	//
+	// Create our prepared mapping.  Note that if the calls to Plan() succeed then we do
+	// not need to check errors on the following statement for that plan.
+	prepared := me.model.PreparedMapping.Copy()
 	prepared.Rebind(value)
-	prepared.Plan(me.query.Arguments...) // TODO+NB Error
-	prepared.Fields(args)                // TODO+NB Error
-	prepared.Plan(me.query.Scan...)      // TODO+NB Error
-	prepared.Assignables(scans)          // TODO+NB Error
+	if err := prepared.Plan(me.query.Arguments...); err != nil {
+		return errors.Go(err)
+	}
+	_, _ = prepared.Fields(args)
+	if err := prepared.Plan(me.query.Scan...); err != nil {
+		return errors.Go(err)
+	}
+	_, _ = prepared.Assignables(scans)
 	//
 	// If no scans then use Exec().
 	if len(me.query.Scan) == 0 {
@@ -97,9 +105,14 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 	var row *sql.Row
 	var err error
 	//
+	// If the calls to Plan succeed then further calls to Fields or Assignables will not error.
 	preparedArgs, preparedScans := me.model.PreparedMapping.Copy(), me.model.PreparedMapping.Copy()
-	preparedArgs.Plan(me.query.Arguments...) // TODO+NB error
-	preparedScans.Plan(me.query.Scan...)     // TODO+NB error
+	if err = preparedArgs.Plan(me.query.Arguments...); err != nil {
+		return errors.Go(err)
+	}
+	if err = preparedScans.Plan(me.query.Scan...); err != nil {
+		return errors.Go(err)
+	}
 	args, scans := make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
 	//
 	// If original parameter supports transactions...
@@ -139,9 +152,7 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 		for k := 0; k < size; k++ {
 			elem := v.Index(k)
 			preparedArgs.Rebind(elem)
-			preparedArgs.Fields(args)
-			preparedScans.Rebind(elem)       // TODO scans not used here???
-			preparedScans.Assignables(scans) // TODO scans not used here???
+			_, _ = preparedArgs.Fields(args)
 			//
 			if _, err = Exec(args...); err != nil {
 				return errors.Go(err)
@@ -151,9 +162,9 @@ func (me *query_binding_t) QuerySlice(q sqlh.IQueries, values interface{}) error
 		for k := 0; k < size; k++ {
 			elem := v.Index(k).Interface()
 			preparedArgs.Rebind(elem)
-			preparedArgs.Fields(args)
+			_, _ = preparedArgs.Fields(args)
 			preparedScans.Rebind(elem)
-			preparedScans.Assignables(scans)
+			_, _ = preparedScans.Assignables(scans)
 			//
 			row = QueryRow(args...)
 			if err = row.Scan(scans...); err != nil {
