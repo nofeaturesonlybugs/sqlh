@@ -1,5 +1,10 @@
 /develop
 
+0.4.0
+    + Transact(fn) was not correctly returning the error from the call to fn(); transactions
+        themselves were correctly rolled back due to non-nil error returned from fn() but the
+        error itself was not returning to the caller.
+
 0.3.0
     + Breaking change migration (impact=low).
         + grammar.Default renamed to grammar.Sqlite -- generated SQL is same as previous version.
