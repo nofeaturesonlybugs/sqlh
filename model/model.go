@@ -15,9 +15,9 @@ type Model struct {
 	// Statements are the SQL database statements.
 	Statements statements.Table
 
-	// V is a *set.Value of a model instance M.
+	// V is a set.Value of a model instance M.
 	V set.Value
-	// VSlice is a *set.Value of a model slice []M.
+	// VSlice is a set.Value of a model slice []M.
 	VSlice set.Value
 
 	// Mapping is the column to struct field mapping.
