@@ -7,6 +7,21 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
+// SentinalTime is a set time value used to generate times.
+var SentinalTime time.Time = time.Date(2006, 1, 2, 3, 4, 5, 7, time.Local)
+
+// TimeGenerator uses SentinalTime to return deterministic time values.
+type TimeGenerator struct {
+	n int
+}
+
+// Next returns the next time.Time.
+func (tg *TimeGenerator) Next() time.Time {
+	rv := SentinalTime.Add(time.Duration(tg.n) * time.Hour)
+	tg.n++
+	return rv
+}
+
 // Example is a specific example.
 type Example int
 
@@ -44,24 +59,24 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			RowsWillBeClosed()
 
 	case ExNestedStruct:
-		ts := time.Now().Add(1 * time.Hour)
+		tg := TimeGenerator{}
 		mock.ExpectQuery("select +").
 			WillReturnRows(
 				sqlmock.NewRows([]string{"id", "created", "modified", "message", "num"}).
-					AddRow(1, ts.Add(1*time.Second), ts.Add(100*time.Second), "Hello, World!", 42).
-					AddRow(2, ts.Add(2*time.Second), ts.Add(200*time.Second), "So long!", 100)).
+					AddRow(1, tg.Next(), tg.Next(), "Hello, World!", 42).
+					AddRow(2, tg.Next(), tg.Next(), "So long!", 100)).
 			RowsWillBeClosed()
 
 	case ExNestedTwice:
-		ts := time.Now().Add(1 * time.Hour)
+		tg := TimeGenerator{}
 		mock.ExpectQuery("select +").
 			WillReturnRows(
 				sqlmock.NewRows([]string{
 					"id", "created", "modified",
 					"customer_id", "customer_first", "customer_last",
 					"contact_id", "contact_first", "contact_last"}).
-					AddRow(1, ts.Add(1*time.Second), ts.Add(100*time.Second), 10, "Bob", "Smith", 100, "Sally", "Johnson").
-					AddRow(2, ts.Add(2*time.Second), ts.Add(200*time.Second), 20, "Fred", "Jones", 200, "Betty", "Walker")).
+					AddRow(1, tg.Next(), tg.Next(), 10, "Bob", "Smith", 100, "Sally", "Johnson").
+					AddRow(2, tg.Next(), tg.Next(), 20, "Fred", "Jones", 200, "Betty", "Walker")).
 			RowsWillBeClosed()
 
 	case ExScalar:
@@ -76,8 +91,11 @@ func Connect(e Example) (DB *sql.DB, err error) {
 		mock.ExpectQuery("select +").
 			WillReturnRows(sqlmock.NewRows([]string{"min", "max"}).
 				AddRow(
+					// Don't use TimeGenerator here; these values are hard coded into the // Output: block of an example.
 					time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
-					time.Date(2012, 1, 1, 0, 0, 0, 0, time.UTC))).RowsWillBeClosed()
+					time.Date(2012, 1, 1, 0, 0, 0, 0, time.UTC)),
+			).
+			RowsWillBeClosed()
 
 	case ExStructNotFound:
 		mock.ExpectQuery("select +").
