@@ -236,6 +236,7 @@ I am making a very concerted effort to break the API as little as possible while
 
 -   0.4.0 ⭢ 0.5.0
     -   `Models.Register` requires models to be registered with pointer values. This was a "soft" requirement in the prior version where methods would return errors down the line; however in v0.5.0 a panic occurs if models are not registered via pointer.
+    -   `Models.QueryBinding` is no longer an interface.
     -   Upgrade dependency `set` to v0.5.1; fields in `model/Model` are redefined accordingly:
         -   `V` and `VSlice` are `set.Value` instead of `*set.Value`
         -   `Mapping` is `set.Mapping` instead of `*set.Mapping`
