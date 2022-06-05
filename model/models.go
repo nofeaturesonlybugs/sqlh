@@ -7,6 +7,7 @@ import (
 
 	"github.com/nofeaturesonlybugs/errors"
 	"github.com/nofeaturesonlybugs/set"
+	"github.com/nofeaturesonlybugs/set/path"
 	"github.com/nofeaturesonlybugs/sqlh"
 	"github.com/nofeaturesonlybugs/sqlh/grammar"
 	"github.com/nofeaturesonlybugs/sqlh/model/statements"
@@ -50,17 +51,18 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 	}
 	//
 	var typ reflect.Type
+	var typInfo set.TypeInfo
 	switch sw := value.(type) {
 	case reflect.Type:
 		typ = sw
+		typInfo = set.TypeCache.StatType(typ)
 	default:
 		typ = reflect.TypeOf(value)
+		typInfo = set.TypeCache.Stat(value) // Consider creating a local type cache to the Models type.
 	}
 	if _, ok := me.Models[typ]; ok {
 		return // Already registered.
 	}
-	//
-	typInfo := set.TypeCache.Stat(value) // Consider creating a local type cache to the Models type.
 	//
 	// Get the table name from embedded TableName field.
 	var tableName string
@@ -154,6 +156,21 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 		}
 	}
 	//
+	// Determine the model's save mode.
+	var saveMode SaveMode
+	switch {
+	case len(keyNames) > 0:
+		saveMode = Upsert
+	case len(autoKeyNames) == 0:
+		saveMode = Insert
+	default:
+		saveMode = InsertOrUpdate
+	}
+	var insertUpdatePaths []path.ReflectPath
+	for _, keyName := range autoKeyNames {
+		insertUpdatePaths = append(insertUpdatePaths, mapping.ReflectPaths[keyName])
+	}
+	//
 	// Merge autoKeyNames into autoInsertNames as those keys are generated during insert statements.
 	autoInsertNames = append(autoKeyNames, autoInsertNames...)
 	// Create table struct.
@@ -170,10 +187,11 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 	}
 	// Create model struct.
 	model := &Model{
-		Table:      table,
-		Statements: statements.Table{},
-
-		Mapping: mapping,
+		Table:             table,
+		Statements:        statements.Table{},
+		SaveMode:          saveMode,
+		InsertUpdatePaths: insertUpdatePaths,
+		Mapping:           mapping,
 	}
 	// Fill in query statements.
 	// NB: Ignore errors here as we'll handle when a query is nil for a model in our other functions.
@@ -243,6 +261,66 @@ func (me *Models) Update(Q sqlh.IQueries, value interface{}) error {
 	}
 	//
 	return nil
+}
+
+// Save inspects the incoming model and delegates to Insert, Update, or Upsert method
+// according to the model's SaveMode value, which is determined during registration.
+//
+// Models with at least one key field defined as "key" (i.e. not "key,auto") use Upsert.
+//
+// Models with zero "key" and "key,auto" fields use Insert.
+//
+// Otherwise the model has only "key,auto" fields and will use Update if any such field
+// is a non-zero value and Insert otherwise.
+//
+// If value is a slice []M then the first element is inspected to determine which of
+// Insert, Update, or Upsert is applied to the entire slice.
+func (me *Models) Save(Q sqlh.IQueries, value interface{}) error {
+	model, err := me.Lookup(value)
+	if err != nil {
+		return errors.Go(err)
+	}
+	switch model.SaveMode {
+	case Insert:
+		return me.Insert(Q, value)
+	case Upsert:
+		return me.Upsert(Q, value)
+	case InsertOrUpdate:
+		v := reflect.ValueOf(value)
+		switch v.Kind() {
+		case reflect.Slice:
+			if v.Len() == 0 {
+				return nil
+			}
+			for v = v.Index(0); v.Kind() == reflect.Ptr; v = v.Elem() {
+				if v.IsNil() {
+					return errors.Go(ErrUnsupported).Tag("nil pointer", fmt.Sprintf("%v %v", v.Type(), v.Interface()))
+				}
+			}
+		case reflect.Ptr:
+			for ; v.Kind() == reflect.Ptr; v = v.Elem() {
+				if v.IsNil() {
+					return errors.Go(ErrUnsupported).Tag("nil pointer", fmt.Sprintf("%v %v", v.Type(), v.Interface()))
+				}
+			}
+		}
+		// TODO Possibly add support for an InsertUpdater interface
+		//
+		var keyValue reflect.Value
+		for _, path := range model.InsertUpdatePaths {
+			keyValue = path.Value(v)
+			if !keyValue.IsZero() {
+				// A non-zero field value means update.
+				return me.Update(Q, value)
+			}
+		}
+		return me.Insert(Q, value)
+	}
+	// Currently it _should_be_ impossible for this to occur.  The first thing this method
+	// does is find the associated model and -- if not found -- returns error.  Any model that
+	// is found is (currently at least) guaranteed to have a SaveMode corresponding to one
+	// of the above values.
+	return errors.Go(ErrUnsupported).Tag("SAVE", fmt.Sprintf("%T", value))
 }
 
 // Upsert attempts to persist values via UPSERTs.
