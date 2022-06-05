@@ -117,9 +117,10 @@ if err != nil {
 
 The development of `sqlh` is essentially following my specific pain points when using `database/sql`:
 
--   ✓ `SELECT ⭢ for rows.Next() ⭢ row.Scan()` : covered by `sqlh.Scanner`.
--   ✓ `INSERT|UPDATE|UPSERT` CRUD statements : covered by `model.Models`.
-    -   `UPSERT` currently supports conflict from primary key; conflicts on arbitrary unique indexes not supported.
+-   ✓ Row scanning provided by sqlh.Scanner
+-   ✓ High level Save() method provided by model.Models
+-   ✓ Specific Insert(), Update(), and Upsert() logic provided by model.Models
+    -   Upsert() currently supports conflict from primary key; conflicts on arbitrary unique indexes not supported.
 -   ⭴ `DELETE` CRUD statements : to be covered by `model.Models`.
 -   ⭴ `UPSERT` type operations using index information : to be covered by `model.Models`.
 -   ⭴ `Find()` or `Filter()` for advanced `WHERE` clauses and model selection.
