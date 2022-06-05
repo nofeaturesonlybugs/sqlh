@@ -1,6 +1,8 @@
 package sqlh_test
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/nofeaturesonlybugs/errors"
 	"github.com/nofeaturesonlybugs/set"
 	"github.com/nofeaturesonlybugs/sqlh"
+	"github.com/nofeaturesonlybugs/sqlh/examples"
 )
 
 // rowsColumnsError is an IRows where the Columns() call returns an error.
@@ -416,4 +419,147 @@ func TestScanner_DestWrongType(t *testing.T) {
 	chk.Error(err)
 	err = mock.ExpectationsWereMet()
 	chk.NoError(err)
+}
+
+func TestScanner_Select(t *testing.T) {
+	type SimpleStruct struct {
+		Message string
+		Number  int
+	}
+	//
+	type NestedInnerStruct struct {
+		Id       int       `json:"id"`
+		Created  time.Time `json:"created"`
+		Modified time.Time `json:"modified"`
+	}
+	type NestedOuterStruct struct {
+		NestedInnerStruct
+		Message string `json:"message"`
+		Number  int    `json:"value" db:"num"`
+	}
+	type PointerOuterStruct struct {
+		*NestedInnerStruct
+		Message string `json:"message"`
+		Number  int    `json:"value" db:"num"`
+	}
+
+	//
+	// Some examples return times from time generator.
+	tg := examples.TimeGenerator{}
+	times := []time.Time{tg.Next(), tg.Next(), tg.Next(), tg.Next()}
+	//
+	type SelectTest struct {
+		Name         string
+		Example      examples.Example
+		Dest         reflect.Type
+		DestPointers reflect.Type
+		Expect       interface{}
+		Scanner      *sqlh.Scanner
+	}
+	tests := []SelectTest{
+		{
+			Name:         "slice-struct",
+			Example:      examples.ExSimpleMapper,
+			Dest:         reflect.TypeOf([]SimpleStruct(nil)),
+			DestPointers: reflect.TypeOf([]*SimpleStruct(nil)),
+			Expect: []SimpleStruct{
+				{Message: "Hello, World!", Number: 42},
+				{Message: "So long!", Number: 100},
+			},
+			Scanner: &sqlh.Scanner{
+				Mapper: &set.Mapper{},
+			},
+		},
+		{
+			Name:         "slice-struct-with-nesting",
+			Example:      examples.ExNestedStruct,
+			Dest:         reflect.TypeOf([]NestedOuterStruct(nil)),
+			DestPointers: reflect.TypeOf([]*NestedOuterStruct(nil)),
+			Expect: []NestedOuterStruct{
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 1, Created: times[0], Modified: times[1]},
+					Message:           "Hello, World!",
+					Number:            42,
+				},
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 2, Created: times[2], Modified: times[3]},
+					Message:           "So long!",
+					Number:            100,
+				},
+			},
+			Scanner: &sqlh.Scanner{
+				Mapper: &set.Mapper{
+					Elevated: set.NewTypeList(NestedInnerStruct{}),
+					Tags:     []string{"db", "json"},
+				},
+			},
+		},
+		{
+			Name:         "slice-struct-with-pointer-nesting",
+			Example:      examples.ExNestedStruct,
+			Dest:         reflect.TypeOf([]PointerOuterStruct(nil)),
+			DestPointers: reflect.TypeOf([]*PointerOuterStruct(nil)),
+			Expect: []NestedOuterStruct{
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 1, Created: times[0], Modified: times[1]},
+					Message:           "Hello, World!",
+					Number:            42,
+				},
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 2, Created: times[2], Modified: times[3]},
+					Message:           "So long!",
+					Number:            100,
+				},
+			},
+			Scanner: &sqlh.Scanner{
+				Mapper: &set.Mapper{
+					Elevated: set.NewTypeList(NestedInnerStruct{}),
+					Tags:     []string{"db", "json"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+
+			chk := assert.New(t)
+			db, err := examples.Connect(test.Example)
+			chk.NoError(err)
+
+			dest := reflect.New(test.Dest).Interface()
+
+			err = test.Scanner.Select(db, dest, "select * from mytable")
+			chk.NoError(err)
+
+			// There's different ways we can check for equality here but we'll just see if
+			// what we have encodes the same as what we expect.
+			expect, err := json.Marshal(test.Expect)
+			chk.NoError(err)
+			actual, err := json.Marshal(dest)
+			chk.NoError(err)
+			chk.Equal(expect, actual)
+		})
+		t.Run(test.Name+"-pointers", func(t *testing.T) {
+			t.Parallel()
+
+			chk := assert.New(t)
+			db, err := examples.Connect(test.Example)
+			chk.NoError(err)
+
+			dest := reflect.New(test.DestPointers).Interface()
+
+			err = test.Scanner.Select(db, dest, "select * from mytable")
+			chk.NoError(err)
+
+			// There's different ways we can check for equality here but we'll just see if
+			// what we have encodes the same as what we expect.
+			expect, err := json.Marshal(test.Expect)
+			chk.NoError(err)
+			actual, err := json.Marshal(dest)
+			chk.NoError(err)
+			chk.Equal(expect, actual)
+		})
+	}
 }

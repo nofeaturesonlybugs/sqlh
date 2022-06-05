@@ -56,7 +56,7 @@ scanner := &sqlh.Scanner{
     // Mapper is pure defaults.  Uses exported struct names as column names.
     Mapper: &set.Mapper{},
 }
-var rv []*MyStruct
+var rv []MyStruct // []*MyStruct also acceptable
 err = scanner.Select(db, &rv, "select * from mytable")
 if err != nil {
     fmt.Println(err.Error())
@@ -97,7 +97,7 @@ scanner := &sqlh.Scanner{
       Tags:     []string{"db", "json"},
     },
 }
-var rv []*Sale
+var rv []Sale // []*Sale also acceptable
 query := `
         select
             s.id, s.created, s.modified,
@@ -235,11 +235,13 @@ See my sibling package `sqlhbenchmarks` for my methodology, goals, and interpret
 I am making a very concerted effort to break the API as little as possible while adding features or fixing bugs. However this software is currently in a pre-1.0.0 version and breaking changes _are_ allowed under standard semver. As the API approaches a stable 1.0.0 release I will list any such breaking changes here and they will always be signaled by a bump in _minor_ version.
 
 -   0.4.0 ⭢ 0.5.0
-    -   `Models.Register` requires models to be registered with pointer values. This was a "soft" requirement in the prior version where methods would return errors down the line; however in v0.5.0 a panic occurs if models are not registered via pointer.
-    -   Upgrade dependency `set` to v0.5.1; fields in `model/Model` are redefined accordingly:
-        -   `V` and `VSlice` are `set.Value` instead of `*set.Value`
-        -   `Mapping` is `set.Mapping` instead of `*set.Mapping`
-        -   `PreparedMapping` has replaced the previous `BoundMapping` field.
+    -   `model.Models` methods allow `[]T` or `[]*T` when performing `INSERT|UPDATE|UPSERT` on slices of models.
+    -   `model.QueryBinding` is no longer an interface.
+    -   `model.Model` pruned:
+        -   Removed fields `V`, `VSlice` and `BoundMapping`
+        -   Removed methods `NewInstance` and `NewSlice`
+        -   `BindQuery()` signature changed to require a `*set.Mapper`
+    -   Upgrade `set` dependency to v0.5.1 for performance enhancements.
 -   0.3.0 ⭢ 0.4.0
     -   `Transact(fn)` was correctly rolling the transaction back if `fn` returned `err != nil`; however
         the error from `fn` and any potential error from the rollback were not returned from `Transact()`.

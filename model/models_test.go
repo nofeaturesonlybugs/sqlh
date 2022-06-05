@@ -221,23 +221,6 @@ func TestModelsQueriesError(t *testing.T) {
 	chk.Error(err)
 }
 
-func TestModels_RegisterSetsVAndVSlice(t *testing.T) {
-	chk := assert.New(t)
-	//
-	mdb := examples.NewModels()
-	model, err := mdb.Lookup(&examples.Address{})
-	chk.NoError(err)
-	chk.NotNil(model)
-
-	v, vs := model.NewInstance(), model.NewSlice()
-	if _, ok := v.(*examples.Address); !ok {
-		chk.Fail("Model.NewInstance() failed.")
-	}
-	if _, ok := vs.([]*examples.Address); !ok {
-		chk.Fail("Model.NewSlice() failed.")
-	}
-}
-
 // MakeModelQueryTestsForCompositeKeyNoAuto builds a slice of Test types to test a model with
 // composite primary key and no auto-updating fields.
 func MakeModelQueryTestsForCompositeKeyNoAuto() []Test {

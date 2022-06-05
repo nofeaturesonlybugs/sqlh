@@ -36,21 +36,21 @@ func NewModels() *model.Models {
 		},
 		Grammar: grammar.Postgres,
 	}
-	rv.Register(&Address{})
-	rv.Register(&Person{})
-	rv.Register(&PersonAddress{})
-	rv.Register(&Relationship{})
-	rv.Register(&Upsertable{})
+	rv.Register(Address{})
+	rv.Register(Person{})
+	rv.Register(PersonAddress{})
+	rv.Register(Relationship{})
+	rv.Register(Upsertable{})
 	return rv
 }
 
 func init() {
 	// Somewhere in your application you need to register all types to be used as models.
-	Models.Register(&Address{})
-	Models.Register(&Person{})
-	Models.Register(&PersonAddress{})
-	Models.Register(&Relationship{})
-	Models.Register(&Upsertable{})
+	Models.Register(Address{})
+	Models.Register(Person{})
+	Models.Register(PersonAddress{})
+	Models.Register(Relationship{})
+	Models.Register(Upsertable{})
 }
 
 // Address is a simple model representing an address.

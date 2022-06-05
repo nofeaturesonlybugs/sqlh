@@ -64,11 +64,19 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			"\t\t( $1, $2, $3, $4 )",
 			"\tRETURNING pk, created_tmz, modified_tmz",
 		}
-		rows := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
-			AddRow(ReturnArgs(1, "pk", "created", "modified")...)
+		allRows := []*sqlmock.Rows{
+			sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "pk", "created", "modified")...),
+			sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "pk", "created", "modified")...),
+		}
 		mock.ExpectQuery(strings.Join(parts, "\n")).
 			WithArgs("1234 The Street", "Small City", "ST", "98765").
-			WillReturnRows(rows).
+			WillReturnRows(allRows[0]).
+			RowsWillBeClosed()
+		mock.ExpectQuery(strings.Join(parts, "\n")).
+			WithArgs("4321 The Street", "Big City", "TS", "56789").
+			WillReturnRows(allRows[1]).
 			RowsWillBeClosed()
 
 	case ExAddressInsertSlice:
@@ -79,22 +87,24 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			"\t\t( $1, $2, $3, $4 )",
 			"\tRETURNING pk, created_tmz, modified_tmz",
 		}
-		mock.ExpectBegin()
-		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
-		rows := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
-			AddRow(ReturnArgs(1, "pk", "created", "modified")...)
-		prepared.ExpectQuery().
-			WithArgs("1234 The Street", "Small City", "ST", "98765").
-			WillReturnRows(rows).
-			RowsWillBeClosed()
-		rows = sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
-			AddRow(ReturnArgs(1, "pk", "created", "modified")...)
-		prepared.ExpectQuery().
-			WithArgs("55 Here We Are", "Big City", "TS", "56789").
-			WillReturnRows(rows).
-			RowsWillBeClosed()
-		prepared.WillBeClosed()
-		mock.ExpectCommit()
+		for k := 0; k < 2; k++ {
+			mock.ExpectBegin()
+			prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+			rows := sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "pk", "created", "modified")...)
+			prepared.ExpectQuery().
+				WithArgs("1234 The Street", "Small City", "ST", "98765").
+				WillReturnRows(rows).
+				RowsWillBeClosed()
+			rows = sqlmock.NewRows([]string{"pk", "created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "pk", "created", "modified")...)
+			prepared.ExpectQuery().
+				WithArgs("55 Here We Are", "Big City", "TS", "56789").
+				WillReturnRows(rows).
+				RowsWillBeClosed()
+			prepared.WillBeClosed()
+			mock.ExpectCommit()
+		}
 
 	case ExAddressUpdate:
 		parts := []string{
@@ -107,11 +117,19 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			"\t\tpk = $5",
 			"\tRETURNING modified_tmz",
 		}
-		rows := sqlmock.NewRows([]string{"modified_tmz"}).
-			AddRow(ReturnArgs(1, "modified")...)
+		allRows := []*sqlmock.Rows{
+			sqlmock.NewRows([]string{"modified_tmz"}).
+				AddRow(ReturnArgs(1, "modified")...),
+			sqlmock.NewRows([]string{"modified_tmz"}).
+				AddRow(ReturnArgs(1, "modified")...),
+		}
 		mock.ExpectQuery(strings.Join(parts, "\n")).
 			WithArgs("1234 The Street", "Small City", "ST", "98765", 42).
-			WillReturnRows(rows).
+			WillReturnRows(allRows[0]).
+			RowsWillBeClosed()
+		mock.ExpectQuery(strings.Join(parts, "\n")).
+			WithArgs("4321 The Street", "Big City", "TS", "56789", 42).
+			WillReturnRows(allRows[1]).
 			RowsWillBeClosed()
 
 	case ExAddressUpdateSlice:
@@ -125,22 +143,24 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			"\t\tpk = $5",
 			"\tRETURNING modified_tmz",
 		}
-		mock.ExpectBegin()
-		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
-		rows := sqlmock.NewRows([]string{"modified_tmz"}).
-			AddRow(ReturnArgs(1, "modified")...)
-		prepared.ExpectQuery().
-			WithArgs("1234 The Street", "Small City", "ST", "98765", 42).
-			WillReturnRows(rows).
-			RowsWillBeClosed()
-		rows = sqlmock.NewRows([]string{"modified_tmz"}).
-			AddRow(ReturnArgs(1, "modified")...)
-		prepared.ExpectQuery().
-			WithArgs("55 Here We Are", "Big City", "TS", "56789", 62).
-			WillReturnRows(rows).
-			RowsWillBeClosed()
-		prepared.WillBeClosed()
-		mock.ExpectCommit()
+		for k := 0; k < 2; k++ {
+			mock.ExpectBegin()
+			prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+			rows := sqlmock.NewRows([]string{"modified_tmz"}).
+				AddRow(ReturnArgs(1, "modified")...)
+			prepared.ExpectQuery().
+				WithArgs("1234 The Street", "Small City", "ST", "98765", 42).
+				WillReturnRows(rows).
+				RowsWillBeClosed()
+			rows = sqlmock.NewRows([]string{"modified_tmz"}).
+				AddRow(ReturnArgs(1, "modified")...)
+			prepared.ExpectQuery().
+				WithArgs("55 Here We Are", "Big City", "TS", "56789", 62).
+				WillReturnRows(rows).
+				RowsWillBeClosed()
+			prepared.WillBeClosed()
+			mock.ExpectCommit()
+		}
 
 	case ExRelationshipInsert:
 		parts := []string{
@@ -237,11 +257,19 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			"\t\t)",
 			"\tRETURNING created_tmz, modified_tmz",
 		}
+		allRows := []*sqlmock.Rows{
+			sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "created", "modified")...),
+			sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "created", "modified")...),
+		}
 		qu := mock.ExpectQuery(strings.Join(parts, "\n"))
-		rows := sqlmock.NewRows([]string{"created_tmz", "modified_tmz"})
-		rows.AddRow(ReturnArgs(1, "created", "modified")...)
 		qu.WithArgs("some-unique-string", "Hello, World!", 42)
-		qu.WillReturnRows(rows)
+		qu.WillReturnRows(allRows[0])
+		qu.RowsWillBeClosed()
+		qu = mock.ExpectQuery(strings.Join(parts, "\n"))
+		qu.WithArgs("other-unique-string", "Foo, Bar!", 100)
+		qu.WillReturnRows(allRows[1])
 		qu.RowsWillBeClosed()
 
 	case ExUpsertSlice:
@@ -257,20 +285,22 @@ func Connect(e Example) (DB *sql.DB, err error) {
 			"\t\t)",
 			"\tRETURNING created_tmz, modified_tmz",
 		}
-		mock.ExpectBegin()
-		prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
-		rows := sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
-			AddRow(ReturnArgs(1, "created", "modified")...)
-		prepared.ExpectQuery().
-			WithArgs("some-unique-string", "Hello, World!", 42).
-			WillReturnRows(rows)
-		rows = sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
-			AddRow(ReturnArgs(1, "created", "modified")...)
-		prepared.ExpectQuery().
-			WithArgs("other-unique-string", "Goodbye, World!", 10).
-			WillReturnRows(rows)
-		prepared.WillBeClosed()
-		mock.ExpectCommit()
+		for k := 0; k < 2; k++ {
+			mock.ExpectBegin()
+			prepared := mock.ExpectPrepare(strings.Join(parts, "\n"))
+			rows := sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "created", "modified")...)
+			prepared.ExpectQuery().
+				WithArgs("some-unique-string", "Hello, World!", 42).
+				WillReturnRows(rows)
+			rows = sqlmock.NewRows([]string{"created_tmz", "modified_tmz"}).
+				AddRow(ReturnArgs(1, "created", "modified")...)
+			prepared.ExpectQuery().
+				WithArgs("other-unique-string", "Goodbye, World!", 10).
+				WillReturnRows(rows)
+			prepared.WillBeClosed()
+			mock.ExpectCommit()
+		}
 
 	}
 	//
