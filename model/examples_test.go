@@ -91,69 +91,105 @@ func ExampleModels_Register() {
 
 	//
 	// Model registration
-	//  + Models must be registered as pointers or a panic occurs.
 	//  + Models that embed model.TableName do not need to specify the tablename during registration.
-	Models.Register(&StringModel{})
-	Models.Register(&NumberModel{}, model.TableName("numbers"))
-	Models.Register(&CompanyModel{}, model.TableName("companies"))
-
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Println("Registering a non-pointer panics.")
-			}
-		}()
-		Models.Register(StringModel{})
-	}()
+	Models.Register(StringModel{})
+	Models.Register(NumberModel{}, model.TableName("numbers"))
+	Models.Register(CompanyModel{}, model.TableName("companies"))
 
 	fmt.Println("all done")
 
-	// Output: Registering a non-pointer panics.
-	// all done
+	// Output: all done
 }
 
 func ExampleModels_insert() {
 	var zero time.Time
-	model := &examples.Address{
-		// Id, CreatedTime, ModifiedTime are not set and updated by the database.
-		Street: "1234 The Street",
-		City:   "Small City",
-		State:  "ST",
-		Zip:    "98765",
-	}
-
+	//
 	// Create a mock database.
 	db, err := examples.Connect(examples.ExAddressInsert)
 	if err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
+	WasInserted := func(id int, created time.Time, modified time.Time) error {
+		if id == 0 || zero.Equal(created) || zero.Equal(modified) {
+			return fmt.Errorf("Record not inserted.")
+		}
+		return nil
+	}
+	// A "value" record.
+	byVal := examples.Address{
+		// Id, CreatedTime, ModifiedTime are updated by the database.
+		Street: "1234 The Street",
+		City:   "Small City",
+		State:  "ST",
+		Zip:    "98765",
+	}
+	// A pointer record.
+	byPtr := &examples.Address{
+		// Id, CreatedTime, ModifiedTime are updated by the database.
+		Street: "4321 The Street",
+		City:   "Big City",
+		State:  "TS",
+		Zip:    "56789",
+	}
 
-	// Insert our model.
-	if err := examples.Models.Insert(db, model); err != nil {
+	// Pass the address of the "value" record.
+	if err := examples.Models.Insert(db, &byVal); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
+	if err := WasInserted(byVal.Id, byVal.CreatedTime, byVal.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	// The pointer record can be passed directly.
+	if err := examples.Models.Insert(db, byPtr); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasInserted(byPtr.Id, byPtr.CreatedTime, byPtr.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	fmt.Println("Models inserted.")
 
-	// Check expected model fields are no longer zero values.
-	if model.Id == 0 {
-		fmt.Println("id not updated")
-	}
-	if model.CreatedTime.Equal(zero) {
-		fmt.Println("created time not updated")
-	}
-	if model.ModifiedTime.Equal(zero) {
-		fmt.Println("modified time not updated")
-	}
-	fmt.Printf("Model inserted.")
-
-	// Output: Model inserted.
+	// Output: Models inserted.
 }
 
 func ExampleModels_insertSlice() {
 	var zero time.Time
-	models := []*examples.Address{
-		// Id, CreatedTime, ModifiedTime are not set and updated by the database.
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExAddressInsertSlice)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	WasInserted := func(id int, created time.Time, modified time.Time) error {
+		if id == 0 || zero.Equal(created) || zero.Equal(modified) {
+			return fmt.Errorf("Record not inserted.")
+		}
+		return nil
+	}
+	// A slice of values.
+	values := []examples.Address{
+		// Id, CreatedTime, ModifiedTime are updated by the database.
+		{
+			Street: "1234 The Street",
+			City:   "Small City",
+			State:  "ST",
+			Zip:    "98765",
+		},
+		{
+			Street: "55 Here We Are",
+			City:   "Big City",
+			State:  "TS",
+			Zip:    "56789",
+		},
+	}
+	// A slice of pointers.
+	pointers := []*examples.Address{
+		// Id, CreatedTime, ModifiedTime are updated by the database.
 		{
 			Street: "1234 The Street",
 			City:   "Small City",
@@ -168,42 +204,51 @@ func ExampleModels_insertSlice() {
 		},
 	}
 
-	// Create a mock database.
-	db, err := examples.Connect(examples.ExAddressInsertSlice)
-	if err != nil {
+	// Slices of values can be passed directly.
+	if err := examples.Models.Insert(db, values); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
-
-	// Insert our models.
-	if err := examples.Models.Insert(db, models); err != nil {
+	for _, model := range values {
+		if err := WasInserted(model.Id, model.CreatedTime, model.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
+			return
+		}
+	}
+	// Slices of pointers can be passed directly.
+	if err := examples.Models.Insert(db, pointers); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
-
-	// Check expected model fields are no longer zero values.
-	for _, model := range models {
-		if model.Id == 0 {
-			fmt.Println("id not updated")
-			return
-		}
-		if model.CreatedTime.Equal(zero) {
-			fmt.Println("created time not updated")
-			return
-		}
-		if model.ModifiedTime.Equal(zero) {
-			fmt.Println("modified time not updated")
+	for _, model := range pointers {
+		if err := WasInserted(model.Id, model.CreatedTime, model.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
 			return
 		}
 	}
-	fmt.Printf("%v model(s) inserted.", len(models))
 
-	// Output: 2 model(s) inserted.
+	fmt.Println("Models inserted.")
+
+	// Output: Models inserted.
 }
 
 func ExampleModels_update() {
 	var zero time.Time
-	model := &examples.Address{
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExAddressUpdate)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	WasUpdated := func(modified time.Time) error {
+		if zero.Equal(modified) {
+			return fmt.Errorf("Record not updated.")
+		}
+		return nil
+	}
+	// A "value" record.
+	byVal := examples.Address{
 		Id:          42,
 		CreatedTime: time.Now().Add(-1 * time.Hour),
 		// ModifiedTime is zero value; will be updated by database.
@@ -212,32 +257,78 @@ func ExampleModels_update() {
 		State:  "ST",
 		Zip:    "98765",
 	}
+	// A pointer record.
+	byPtr := &examples.Address{
+		Id:          42,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+		// ModifiedTime is zero value; will be updated by database.
+		Street: "4321 The Street",
+		City:   "Big City",
+		State:  "TS",
+		Zip:    "56789",
+	}
 
-	// Create a mock database.
-	db, err := examples.Connect(examples.ExAddressUpdate)
-	if err != nil {
+	// Pass "value" record by address.
+	if err := examples.Models.Update(db, &byVal); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasUpdated(byVal.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	// Pass pointer record directly.
+	if err := examples.Models.Update(db, byPtr); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasUpdated(byPtr.ModifiedTime); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
 
-	// Update our model.
-	if err := examples.Models.Update(db, model); err != nil {
-		fmt.Println("err", err.Error())
-		return
-	}
+	fmt.Printf("Models updated.")
 
-	// Check expected model fields are no longer zero values.
-	if model.ModifiedTime.Equal(zero) {
-		fmt.Println("modified time not updated")
-	}
-	fmt.Printf("Model updated.")
-
-	// Output: Model updated.
+	// Output: Models updated.
 }
 
 func ExampleModels_updateSlice() {
 	var zero time.Time
-	models := []*examples.Address{
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExAddressUpdateSlice)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	WasUpdated := func(modified time.Time) error {
+		if zero.Equal(modified) {
+			return fmt.Errorf("Record not updated.")
+		}
+		return nil
+	}
+	// Slice of values.
+	values := []examples.Address{
+		// ModifiedTime is not set and updated by the database.
+		{
+			Id:          42,
+			CreatedTime: time.Now().Add(-2 * time.Hour),
+			Street:      "1234 The Street",
+			City:        "Small City",
+			State:       "ST",
+			Zip:         "98765",
+		},
+		{
+			Id:          62,
+			CreatedTime: time.Now().Add(-1 * time.Hour),
+			Street:      "55 Here We Are",
+			City:        "Big City",
+			State:       "TS",
+			Zip:         "56789",
+		},
+	}
+	// Slice of pointers.
+	pointers := []*examples.Address{
 		// ModifiedTime is not set and updated by the database.
 		{
 			Id:          42,
@@ -257,67 +348,116 @@ func ExampleModels_updateSlice() {
 		},
 	}
 
-	// Create a mock database.
-	db, err := examples.Connect(examples.ExAddressUpdateSlice)
-	if err != nil {
+	// Slice of values can be passed directly.
+	if err := examples.Models.Update(db, values); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
-
-	// Update our models.
-	if err := examples.Models.Update(db, models); err != nil {
-		fmt.Println("err", err.Error())
-		return
-	}
-
-	// Check expected model fields are no longer zero values.
-	for _, model := range models {
-		if model.ModifiedTime.Equal(zero) {
-			fmt.Println("modified time not updated")
+	for _, model := range values {
+		if err := WasUpdated(model.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
 			return
 		}
 	}
-	fmt.Printf("%v model(s) updated.", len(models))
+	// Slice of pointers can be passed directly.
+	if err := examples.Models.Update(db, pointers); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	for _, model := range pointers {
+		if err := WasUpdated(model.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
+			return
+		}
+	}
 
-	// Output: 2 model(s) updated.
+	fmt.Println("Models updated.")
+
+	// Output: Models updated.
 }
 
 func ExampleModels_upsert() {
 	var zero time.Time
-	model := &examples.Upsertable{
-		Id:     "some-unique-string",
-		String: "Hello, World!",
-		Number: 42,
-	}
-
+	//
 	// Create a mock database.
 	db, err := examples.Connect(examples.ExUpsert)
 	if err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
+	WasUpserted := func(created time.Time, modified time.Time) error {
+		if zero.Equal(created) || zero.Equal(modified) {
+			return fmt.Errorf("Record not upserted.")
+		}
+		return nil
+	}
+	// A "value" record.
+	byVal := examples.Upsertable{
+		Id:     "some-unique-string",
+		String: "Hello, World!",
+		Number: 42,
+	}
+	// A pointer record.
+	byPtr := &examples.Upsertable{
+		Id:     "other-unique-string",
+		String: "Foo, Bar!",
+		Number: 100,
+	}
 
-	// Upsert our model.
-	if err := examples.Models.Upsert(db, model); err != nil {
+	// Pass "value" record by address.
+	if err := examples.Models.Upsert(db, &byVal); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasUpserted(byVal.CreatedTime, byVal.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	// Pass pointer record directly.
+	if err := examples.Models.Upsert(db, byPtr); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasUpserted(byPtr.CreatedTime, byPtr.ModifiedTime); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
 
-	// Check expected model fields are no longer zero values.
-	if model.CreatedTime.Equal(zero) {
-		fmt.Println("created time not updated")
-	}
-	if model.ModifiedTime.Equal(zero) {
-		fmt.Println("modified time not updated")
-	}
-	fmt.Printf("Model upserted.")
+	fmt.Printf("Models upserted.")
 
-	// Output: Model upserted.
+	// Output: Models upserted.
 }
 
 func ExampleModels_upsertSlice() {
 	var zero time.Time
-	models := []*examples.Upsertable{
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExUpsertSlice)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	WasUpserted := func(created time.Time, modified time.Time) error {
+		if zero.Equal(created) || zero.Equal(modified) {
+			return fmt.Errorf("Record not upserted.")
+		}
+		return nil
+	}
+	// Slice of values.
+	values := []examples.Upsertable{
+		{
+			Id:     "some-unique-string",
+			String: "Hello, World!",
+			Number: 42,
+		},
+		{
+			Id:     "other-unique-string",
+			String: "Goodbye, World!",
+			Number: 10,
+		},
+	}
+	// Slice of pointers.
+	pointers := []*examples.Upsertable{
 		{
 			Id:     "some-unique-string",
 			String: "Hello, World!",
@@ -330,33 +470,32 @@ func ExampleModels_upsertSlice() {
 		},
 	}
 
-	// Create a mock database.
-	db, err := examples.Connect(examples.ExUpsertSlice)
-	if err != nil {
+	// Pass "values" directly.
+	if err := examples.Models.Upsert(db, values); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
-
-	// Upsert our models.
-	if err := examples.Models.Upsert(db, models); err != nil {
+	for _, model := range values {
+		if err := WasUpserted(model.CreatedTime, model.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
+			return
+		}
+	}
+	// Pass pointers directly.
+	if err := examples.Models.Upsert(db, pointers); err != nil {
 		fmt.Println("err", err.Error())
 		return
 	}
-
-	// Check expected model fields are no longer zero values.
-	for _, model := range models {
-		if model.CreatedTime.Equal(zero) {
-			fmt.Println("created time not updated")
-			return
-		}
-		if model.ModifiedTime.Equal(zero) {
-			fmt.Println("modified time not updated")
+	for _, model := range pointers {
+		if err := WasUpserted(model.CreatedTime, model.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
 			return
 		}
 	}
-	fmt.Printf("%v model(s) upserted.", len(models))
 
-	// Output: 2 model(s) upserted.
+	fmt.Println("Models upserted.")
+
+	// Output: Models upserted.
 }
 
 func ExampleModels_relationship() {
@@ -369,13 +508,14 @@ func ExampleModels_relationship() {
 			fmt.Println(err.Error())
 			return
 		}
-		//
-		relate := &examples.Relationship{
+		// A "value" model.
+		value := examples.Relationship{
 			LeftId:  1,
 			RightId: 10,
 			Toggle:  false,
 		}
-		if err = examples.Models.Insert(db, relate); err != nil {
+		// Pass "value" model by address.
+		if err = examples.Models.Insert(db, &value); err != nil {
 			fmt.Println(err)
 			return
 		}
@@ -388,12 +528,13 @@ func ExampleModels_relationship() {
 			fmt.Println(err.Error())
 			return
 		}
-		//
+		// A pointer model.
 		relate := &examples.Relationship{
 			LeftId:  1,
 			RightId: 10,
 			Toggle:  true,
 		}
+		// Pass pointer model directly.
 		if err = examples.Models.Update(db, relate); err != nil {
 			fmt.Println(err)
 			return
@@ -435,8 +576,8 @@ func ExampleModels_relationshipSlice() {
 			fmt.Println(err.Error())
 			return
 		}
-		//
-		relate := []*examples.Relationship{
+		// Slice of "values".
+		relate := []examples.Relationship{
 			{
 				LeftId:  1,
 				RightId: 10,
@@ -453,6 +594,7 @@ func ExampleModels_relationshipSlice() {
 				Toggle:  false,
 			},
 		}
+		// Pass slice of "values" directly.
 		if err = examples.Models.Insert(db, relate); err != nil {
 			fmt.Println(err)
 			return
@@ -466,7 +608,7 @@ func ExampleModels_relationshipSlice() {
 			fmt.Println(err.Error())
 			return
 		}
-		//
+		// Slice of pointers.
 		relate := []*examples.Relationship{
 			{
 				LeftId:  1,
@@ -484,6 +626,7 @@ func ExampleModels_relationshipSlice() {
 				Toggle:  true,
 			},
 		}
+		// Pass slice of pointers directly.
 		if err = examples.Models.Update(db, relate); err != nil {
 			fmt.Println(err)
 			return

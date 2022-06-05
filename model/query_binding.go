@@ -32,6 +32,8 @@ func (me QueryBinding) Query(q sqlh.IQueries, value interface{}) error {
 }
 
 // QueryOne runs the query against a single instance of the model.
+//
+// As a special case value can be an instance of reflect.Value.
 func (me QueryBinding) QueryOne(q sqlh.IQueries, value interface{}) error {
 	args, scans := make([]interface{}, len(me.query.Arguments)), make([]interface{}, len(me.query.Scan))
 	//
@@ -81,7 +83,7 @@ func (me QueryBinding) QuerySlice(q sqlh.IQueries, values interface{}) error {
 	if size == 0 {
 		return nil
 	} else if size == 1 {
-		return me.Query(q, v.Index(0).Interface())
+		return me.QueryOne(q, v.Index(0))
 	}
 	//
 	var tx *sql.Tx
@@ -148,7 +150,7 @@ func (me QueryBinding) QuerySlice(q sqlh.IQueries, values interface{}) error {
 		}
 	} else {
 		for k := 0; k < size; k++ {
-			elem := v.Index(k).Interface()
+			elem := v.Index(k)
 			preparedArgs.Rebind(elem)
 			_, _ = preparedArgs.Fields(args)
 			preparedScans.Rebind(elem)
