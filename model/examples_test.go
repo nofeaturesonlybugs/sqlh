@@ -101,7 +101,7 @@ func ExampleModels_Register() {
 	// Output: all done
 }
 
-func ExampleModels_insert() {
+func ExampleModels_Insert() {
 	var zero time.Time
 	//
 	// Create a mock database.
@@ -156,7 +156,7 @@ func ExampleModels_insert() {
 	// Output: Models inserted.
 }
 
-func ExampleModels_insertSlice() {
+func ExampleModels_Insert_slice() {
 	var zero time.Time
 	//
 	// Create a mock database.
@@ -232,7 +232,251 @@ func ExampleModels_insertSlice() {
 	// Output: Models inserted.
 }
 
-func ExampleModels_update() {
+func ExampleModels_Save() {
+	// This example demonstrates using Models.Save when the models have only "key,auto" fields.
+	// This means when models are first created and passed to Save an INSERT is performed.
+	// Subsequent calls to Save with the model instances results in UPDATE queries.
+
+	// Similar to other examples this example uses a "value" model and a pointer model.  Note
+	// the "value" model needs to be passed by address.
+
+	var zero time.Time
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExAddressSave)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	WasInserted := func(id int, created time.Time, modified time.Time) error {
+		if id == 0 || zero.Equal(created) || !created.Equal(modified) {
+			return fmt.Errorf("Record not inserted.")
+		}
+		return nil
+	}
+	WasUpdated := func(created time.Time, modified time.Time) error {
+		if created.Equal(modified) {
+			return fmt.Errorf("Record not updated.")
+		}
+		return nil
+	}
+	// A "value" instance.
+	byVal := examples.Address{
+		Street: "1234 The Street",
+		City:   "Small City",
+		State:  "ST",
+		Zip:    "98765",
+	}
+	// A pointer instance.
+	byPtr := &examples.Address{
+		Street: "55 Here We Are",
+		City:   "Big City",
+		State:  "TS",
+		Zip:    "56789",
+	}
+	//
+
+	// Save the models; since these models only have "key,auto" fields they will first INSERT.
+	if err := examples.Models.Save(db, &byVal); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasInserted(byVal.Id, byVal.CreatedTime, byVal.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := examples.Models.Save(db, byPtr); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasInserted(byPtr.Id, byPtr.CreatedTime, byPtr.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+
+	// Edit the model fields.
+	byVal.Street = "1 New Street"
+	byVal.Zip = "99111"
+
+	byPtr.Street = "2 New Street"
+	byPtr.Zip = "99222"
+
+	// Save the models; since the key fields are no longer zero values they will UPDATE.
+	if err := examples.Models.Save(db, &byVal); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasUpdated(byVal.CreatedTime, byVal.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := examples.Models.Save(db, byPtr); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	if err := WasUpdated(byPtr.CreatedTime, byPtr.ModifiedTime); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+
+	fmt.Println("Models saved.")
+
+	// Output: Models saved.
+}
+
+func ExampleModels_Save_slice() {
+	// This example demonstrates using Models.Save when the models have only "key,auto" fields.
+	// This means when models are first created and passed to Save an INSERT is performed.
+	// Subsequent calls to Save with the model instances results in UPDATE queries.
+
+	var zero time.Time
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExAddressSaveSlice)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	WasInserted := func(id int, created time.Time, modified time.Time) error {
+		if id == 0 || zero.Equal(created) || !created.Equal(modified) {
+			return fmt.Errorf("Record not inserted.")
+		}
+		return nil
+	}
+	WasUpdated := func(created time.Time, modified time.Time) error {
+		if created.Equal(modified) {
+			return fmt.Errorf("Record not updated.")
+		}
+		return nil
+	}
+	values := []examples.Address{
+		{
+			Street: "1234 The Street",
+			City:   "Small City",
+			State:  "ST",
+			Zip:    "98765",
+		},
+		{
+			Street: "55 Here We Are",
+			City:   "Big City",
+			State:  "TS",
+			Zip:    "56789",
+		},
+	}
+
+	// Save the models; since these models only have "key,auto" fields they will first INSERT.
+	if err := examples.Models.Save(db, values); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	for _, value := range values {
+		if err := WasInserted(value.Id, value.CreatedTime, value.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
+			return
+		}
+	}
+
+	// Edit the model fields.
+	values[0].Street = "1 New Street"
+	values[0].Zip = "99111"
+
+	values[1].Street = "2 New Street"
+	values[1].Zip = "99222"
+
+	// Save the models; since the key fields are no longer zero values they will UPDATE.
+	if err := examples.Models.Save(db, values); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	for _, value := range values {
+		if err := WasUpdated(value.CreatedTime, value.ModifiedTime); err != nil {
+			fmt.Println("err", err.Error())
+			return
+		}
+	}
+
+	fmt.Println("Models saved.")
+
+	// Output: Models saved.
+}
+
+func ExampleModels_Save_compositeKeyUpserts() {
+	// This example demonstrates using Models.Save when the models have only "key" key fields
+	// and zero "key,auto" fields.  Such models are saved with UPSERT.
+
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExRelationshipSave)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	values := []examples.Relationship{
+		{
+			LeftId:  1, // LeftId and RightId are the composite key
+			RightId: 2,
+			Toggle:  false,
+		},
+		{
+			LeftId:  10,
+			RightId: 20,
+			Toggle:  false,
+		},
+	}
+
+	// Save the models; since these models only have "key,auto" fields they will first INSERT.
+	if err := examples.Models.Save(db, values); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+
+	// Edit the model fields.
+	values[0].Toggle = true
+	values[1].Toggle = true
+
+	// Save the models; since the key fields are no longer zero values they will UPDATE.
+	if err := examples.Models.Save(db, values); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+
+	fmt.Println("Models saved.")
+
+	// Output: Models saved.
+}
+
+func ExampleModels_Save_noKeyFieldsInserts() {
+	// This example demonstrates using Models.Save when the models do not have any
+	// "key" or "key,auto" fields.  Such models must INSERT.
+	//
+	// Note also that such a model could be a partial model of the actual database table
+	// that does have key fields defined in the table schema.
+
+	//
+	// Create a mock database.
+	db, err := examples.Connect(examples.ExLogEntrySave)
+	if err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+	values := []examples.LogEntry{
+		{Message: "Hello, World!"},
+		{Message: "Foo, Bar!"},
+		{Message: "The llamas are escaping!"},
+	}
+
+	// Save the models; since these models have no "key" or "key,auto" fields use INSERT.
+	if err := examples.Models.Save(db, values); err != nil {
+		fmt.Println("err", err.Error())
+		return
+	}
+
+	fmt.Println("Models saved.")
+
+	// Output: Models saved.
+}
+
+func ExampleModels_Update() {
 	var zero time.Time
 	//
 	// Create a mock database.
@@ -292,7 +536,7 @@ func ExampleModels_update() {
 	// Output: Models updated.
 }
 
-func ExampleModels_updateSlice() {
+func ExampleModels_Update_slice() {
 	var zero time.Time
 	//
 	// Create a mock database.
@@ -376,7 +620,7 @@ func ExampleModels_updateSlice() {
 	// Output: Models updated.
 }
 
-func ExampleModels_upsert() {
+func ExampleModels_Upsert() {
 	var zero time.Time
 	//
 	// Create a mock database.
@@ -428,7 +672,7 @@ func ExampleModels_upsert() {
 	// Output: Models upserted.
 }
 
-func ExampleModels_upsertSlice() {
+func ExampleModels_Upsert_slice() {
 	var zero time.Time
 	//
 	// Create a mock database.

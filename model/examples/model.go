@@ -37,6 +37,7 @@ func NewModels() *model.Models {
 		Grammar: grammar.Postgres,
 	}
 	rv.Register(Address{})
+	rv.Register(LogEntry{})
 	rv.Register(Person{})
 	rv.Register(PersonAddress{})
 	rv.Register(Relationship{})
@@ -47,6 +48,7 @@ func NewModels() *model.Models {
 func init() {
 	// Somewhere in your application you need to register all types to be used as models.
 	Models.Register(Address{})
+	Models.Register(LogEntry{})
 	Models.Register(Person{})
 	Models.Register(PersonAddress{})
 	Models.Register(Relationship{})
@@ -114,4 +116,16 @@ type Relationship struct {
 	RightId int `json:"right_id" db:"right_fk" model:"key"`
 	// Such a table might have other columns.
 	Toggle bool `json:"toggle"`
+}
+
+// LogEntry is a model with no key fields defined in the Go struct.  When such
+// a model is saved with Models.Save the Insert method will be used.
+//
+// Note that there's no reason a model like LogEntry can't be a partial model
+// with just enough information to insert a record without caring about
+// any key,auto field within the database table.
+type LogEntry struct {
+	model.TableName `json:"-" model:"log"`
+
+	Message string `json:"message"`
 }
