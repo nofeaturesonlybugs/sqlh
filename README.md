@@ -235,12 +235,10 @@ See my sibling package `sqlhbenchmarks` for my methodology, goals, and interpret
 I am making a very concerted effort to break the API as little as possible while adding features or fixing bugs. However this software is currently in a pre-1.0.0 version and breaking changes _are_ allowed under standard semver. As the API approaches a stable 1.0.0 release I will list any such breaking changes here and they will always be signaled by a bump in _minor_ version.
 
 -   0.4.0 ⭢ 0.5.0
-    -   `Models.Register` requires models to be registered with pointer values. This was a "soft" requirement in the prior version where methods would return errors down the line; however in v0.5.0 a panic occurs if models are not registered via pointer.
-    -   `Models.QueryBinding` is no longer an interface.
-    -   Upgrade dependency `set` to v0.5.1; fields in `model/Model` are redefined accordingly:
-        -   `V` and `VSlice` are `set.Value` instead of `*set.Value`
-        -   `Mapping` is `set.Mapping` instead of `*set.Mapping`
-        -   `PreparedMapping` has replaced the previous `BoundMapping` field.
+    -   `model.QueryBinding` is no longer an interface.
+    -   `model.Model` pruned:
+        -   Removed fields `V`, `VSlice` and `BoundMapping`
+        -   Removed methods `NewInstance` and `NewSlice`
 -   0.3.0 ⭢ 0.4.0
     -   `Transact(fn)` was correctly rolling the transaction back if `fn` returned `err != nil`; however
         the error from `fn` and any potential error from the rollback were not returned from `Transact()`.

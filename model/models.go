@@ -31,19 +31,30 @@ type Models struct {
 	StructTag string
 }
 
-// Register adds a Go type to the Models instance.  As part of initialization your application
-// should register all types T that need to interact with the database.
+// Register adds a Go type to the Models instance.
 //
-// Register is not goroutine safe; implement locking in the application level if required.
+// Register is not goroutine safe; implement locking in the store or application level if required.
+//
+// When Register is called with a type T the following registrations are made:
+//	T, *T, []T, & []*T
+//
+// As a convenience register can be called with a reflect.Type as the value.
 func (me *Models) Register(value interface{}, opts ...interface{}) {
 	tagName := me.StructTag
 	if tagName == "" {
 		tagName = "model"
 	}
-	typ := reflect.TypeOf(value)
 	//
 	if me.Models == nil {
 		me.Models = make(map[reflect.Type]*Model)
+	}
+	//
+	var typ reflect.Type
+	switch sw := value.(type) {
+	case reflect.Type:
+		typ = sw
+	default:
+		typ = reflect.TypeOf(value)
 	}
 	if _, ok := me.Models[typ]; ok {
 		return // Already registered.
@@ -158,18 +169,11 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 		Columns: columns,
 	}
 	// Create model struct.
-	prepared, err := me.Mapper.Prepare(value)
-	if err != nil {
-		panic(err.Error()) // TODO+NB Better message?
-	}
 	model := &Model{
 		Table:      table,
 		Statements: statements.Table{},
-		V:          set.V(value),
-		VSlice:     set.V(reflect.Indirect(reflect.New(reflect.SliceOf(typ))).Interface()),
 
-		Mapping:         mapping,
-		PreparedMapping: prepared,
+		Mapping: mapping,
 	}
 	// Fill in query statements.
 	// NB: Ignore errors here as we'll handle when a query is nil for a model in our other functions.
@@ -181,7 +185,9 @@ func (me *Models) Register(value interface{}, opts ...interface{}) {
 	// We want to be able to look up the model by the original type T passed to this function
 	// as well as []T.
 	me.Models[typ] = model
-	me.Models[reflect.TypeOf(model.NewSlice())] = model
+	me.Models[reflect.PtrTo(typ)] = model
+	me.Models[reflect.SliceOf(typ)] = model
+	me.Models[reflect.SliceOf(reflect.PtrTo(typ))] = model
 }
 
 // Lookup returns the model associated with the value.
@@ -211,7 +217,7 @@ func (me *Models) Insert(Q sqlh.IQueries, value interface{}) error {
 		return errors.Go(ErrUnsupported).Tag("INSERT", fmt.Sprintf("%T", value))
 	}
 	//
-	binding = model.BindQuery(query)
+	binding = model.BindQuery(me.Mapper, query)
 	if err = binding.Query(Q, value); err != nil {
 		return errors.Go(err)
 	}
@@ -231,7 +237,7 @@ func (me *Models) Update(Q sqlh.IQueries, value interface{}) error {
 		return errors.Go(ErrUnsupported).Tag("UPDATE", fmt.Sprintf("%T", value))
 	}
 	//
-	binding = model.BindQuery(query)
+	binding = model.BindQuery(me.Mapper, query)
 	if err = binding.Query(Q, value); err != nil {
 		return errors.Go(err)
 	}
@@ -257,7 +263,7 @@ func (me *Models) Upsert(Q sqlh.IQueries, value interface{}) error {
 		return errors.Go(ErrUnsupported).Tag("UPSERT", fmt.Sprintf("%T", value))
 	}
 	//
-	binding = model.BindQuery(query)
+	binding = model.BindQuery(me.Mapper, query)
 	if err = binding.Query(Q, value); err != nil {
 		return errors.Go(err)
 	}
