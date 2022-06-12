@@ -6,6 +6,8 @@ github.com/nofeaturesonlybugs/errors v1.0.1 h1:1V31ZMG4v/O1ITqebbA6EVGbflU7CQTxL
 github.com/nofeaturesonlybugs/errors v1.0.1/go.mod h1:ijb9eAT2bkxkRaLR2LdMN1m7yexrxUBHM00L8JcT03A=
 github.com/nofeaturesonlybugs/set v0.3.0 h1:qwlz+ehlovgyFuOYPCzrkIc22VgVY/pgawu0PvL2LkU=
 github.com/nofeaturesonlybugs/set v0.3.0/go.mod h1:7mAYEi6K99BjJm4ieiWNJs43iJ7sXba0KB9POM/x5bY=
+github.com/nofeaturesonlybugs/set v0.5.1 h1:CDitgCN4HHOz04DBV7pw/ni39KMU0rznlwvvonayr3Q=
+github.com/nofeaturesonlybugs/set v0.5.1/go.mod h1:qEfv5TZytUYzaQ5Iv6Tp38xm3VkueGLeOxokCLC8AsY=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0 h1:4G4v2dO3VZwixGIRoQ5Lfboy6nUhCyYzaqnIAPPhYs4=

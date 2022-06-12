@@ -1,5 +1,33 @@
 /develop
 
+0.5.0
+    + Update dependency github.com/nofeaturesonlybugs/set to v0.5.1
+        + This release offers performance enhancements that benefit sqlh.
+
+model
+    + Models do not need to be registered via pointer.
+
+    + Models can be registered via reflect.Type.
+
+    + When calling methods on Models (Insert,Update,etc) slices of models can
+        be passed as []T or []*T
+
+    + Add Models.Save method.  Save accepts *T, []T, or []*T and will delegate
+        to the appropriate method (Insert,Update,Upsert) depending on the model
+        and the current value of its key field(s).  If []T or []*T is passed then
+        the first element is inspected to determine the delegated method and this
+        method is then applied to all elements.
+
+    + Altered Model struct definition.
+        + Removed fields V, VSlice, and BoundMapping
+        + Removed methods NewInstance and NewSlice
+        + BindQuery method signature altered
+
+0.4.0
+    + Transact(fn) was not correctly returning the error from the call to fn(); transactions
+        themselves were correctly rolled back due to non-nil error returned from fn() but the
+        error itself was not returning to the caller.
+
 0.3.0
     + Breaking change migration (impact=low).
         + grammar.Default renamed to grammar.Sqlite -- generated SQL is same as previous version.

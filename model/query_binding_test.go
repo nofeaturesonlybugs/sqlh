@@ -7,11 +7,12 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/nofeaturesonlybugs/errors"
 	"github.com/nofeaturesonlybugs/set"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/nofeaturesonlybugs/sqlh/grammar"
 	"github.com/nofeaturesonlybugs/sqlh/model"
 	"github.com/nofeaturesonlybugs/sqlh/model/examples"
 	"github.com/nofeaturesonlybugs/sqlh/model/statements"
-	"github.com/stretchr/testify/assert"
 )
 
 // no_prepare_db is an IQuery interface that does not support IPrepare.
@@ -38,11 +39,7 @@ func TestQueryBinding(t *testing.T) {
 	chk.NoError(err)
 	//
 	mdb := examples.NewModels()
-	mdb.Register(examples.Person{})
 	//
-	model, err := mdb.Lookup(examples.Person{})
-	chk.NoError(err)
-	chk.NotNil(model)
 	modelptr, err := mdb.Lookup(&examples.Person{})
 	chk.NoError(err)
 	chk.NotNil(modelptr)
@@ -55,8 +52,7 @@ func TestQueryBinding(t *testing.T) {
 			Arguments: []string{"first", "last"},
 			Scan:      []string{"pk"},
 		}
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(mdb.Mapper, qu)
 		// Early return when not a slice.
 		err = bound.QuerySlice(db, int(0))
 		chk.Error(err)
@@ -78,8 +74,7 @@ func TestQueryBinding(t *testing.T) {
 			Arguments: []string{"first", "last"},
 			Scan:      []string{"pk"},
 		}
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(mdb.Mapper, qu)
 		// If begin fails
 		mock.ExpectBegin().WillReturnError(errors.Errorf("begin fail"))
 		err = bound.QuerySlice(db, []*examples.Person{{}, {}})
@@ -106,25 +101,6 @@ func TestQueryBinding(t *testing.T) {
 		err = bound.QuerySlice(db, []*examples.Person{{}, {}})
 		chk.Error(err)
 	}
-	{
-		// Check errors with Query, QueryOne, and QuerySlice when non-pointer.
-		qu := &statements.Query{
-			SQL:       "INSERT",
-			Arguments: []string{"first", "last"},
-			Scan:      []string{"pk"},
-		}
-		bound := model.BindQuery(qu)
-		chk.NotNil(bound)
-		//
-		err = bound.QueryOne(db, examples.Person{})
-		chk.Error(err)
-		//
-		mock.ExpectBegin()
-		mock.ExpectPrepare("INSERT+")
-		mock.ExpectRollback()
-		err = bound.QuerySlice(db, []examples.Person{{}, {}})
-		chk.Error(err)
-	}
 }
 
 func TestQueryBinding_NoPrepares(t *testing.T) {
@@ -145,11 +121,7 @@ func TestQueryBinding_NoPrepares(t *testing.T) {
 		Grammar: grammar.Postgres,
 		Mapper:  &set.Mapper{},
 	}
-	models.Register(Person{})
 	models.Register(&Person{})
-	//
-	model, err := models.Lookup(Person{})
-	chk.NoError(err)
 	//
 	modelptr, err := models.Lookup(&Person{})
 	chk.NoError(err)
@@ -160,27 +132,11 @@ func TestQueryBinding_NoPrepares(t *testing.T) {
 		Scan:      []string{"Id"},
 	}
 	{
-		// Check flow when queryer does not support prepared statements and the bind fails.
-		// db that can't prepare statements.
-		db := &no_prepare_db{db}
-		//
-		bound := model.BindQuery(qu)
-		chk.NotNil(bound)
-		// If query errors.
-		mock.ExpectBegin()
-		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).AddRow(10))
-		mock.ExpectQuery("INSERT+").WillReturnError(errors.Errorf("query failed"))
-		mock.ExpectRollback()
-		err = bound.QuerySlice(db, []Person{{}, {}})
-		chk.Error(err)
-	}
-	{
 		// Check flow when queryer does not support prepared statements.
 		// db that can't prepare statements.
 		db := &no_prepare_db{db}
 		//
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectBegin()
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).AddRow(10))
@@ -229,8 +185,7 @@ func TestQueryBinding_QueryOne(t *testing.T) {
 	}
 	{
 		// Query expects one row and gets one row.
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).AddRow(10))
 		person := &Person{}
@@ -240,8 +195,7 @@ func TestQueryBinding_QueryOne(t *testing.T) {
 	}
 	{
 		// Query expects one row and gets no rows.
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}))
 		person := &Person{}
@@ -252,8 +206,7 @@ func TestQueryBinding_QueryOne(t *testing.T) {
 	{
 		// Query expects one row or none and gets no rows.
 		qu.Expect = statements.ExpectRowOrNone
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}))
 		person := &Person{Id: 10}
@@ -294,8 +247,7 @@ func TestQueryBinding_QuerySlice_WithPrepare_ExpectRow_GetNone(t *testing.T) {
 	}
 	{
 		// Query expects one row and gets no rows.
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectBegin()
 		stmt := mock.ExpectPrepare("INSERT+")
@@ -341,8 +293,7 @@ func TestQueryBinding_QuerySlice_WithPrepare_ExpectRowOrNone_GetNone(t *testing.
 	}
 	{
 		// Query expects one row and gets no rows.
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectBegin()
 		stmt := mock.ExpectPrepare("INSERT+")
@@ -390,8 +341,7 @@ func TestQueryBinding_QuerySlice_NoPrepare_ExpectRow_GetNone(t *testing.T) {
 	}
 	{
 		// Query expects one row and gets no rows.
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
 		people := []*Person{{}, {}}
@@ -435,8 +385,7 @@ func TestQueryBinding_QuerySlice_NoPrepare_ExpectRowOrNone_GetNone(t *testing.T)
 	}
 	{
 		// Query expects one row and gets no rows.
-		bound := modelptr.BindQuery(qu)
-		chk.NotNil(bound)
+		bound := modelptr.BindQuery(models.Mapper, qu)
 		// If query errors.
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
 		mock.ExpectQuery("INSERT+").WillReturnRows(sqlmock.NewRows([]string{"Id"}).RowError(0, sql.ErrNoRows))
@@ -447,4 +396,100 @@ func TestQueryBinding_QuerySlice_NoPrepare_ExpectRowOrNone_GetNone(t *testing.T)
 		chk.Equal(0, people[1].Id)
 		chk.NoError(mock.ExpectationsWereMet())
 	}
+}
+
+func TestQueryBinding_PreparedMappingErrors(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	//
+	type Person struct {
+		model.TableName `model:"people"`
+		Id              int `model:"key,auto"`
+		First           string
+		Last            string
+	}
+	var people []Person = []Person{{}, {}}
+	var person Person
+	//
+	models := model.Models{
+		Grammar: grammar.Postgres,
+		Mapper:  &set.Mapper{},
+	}
+	models.Register(person)
+	modelptr, _ := models.Lookup(person)
+	//
+	t.Run("not writable", func(t *testing.T) {
+		// Model is not writable (can not be prepared by set)
+		chk := assert.New(t)
+		qu := &statements.Query{
+			SQL:       "INSERT",
+			Arguments: []string{"First", "Last"},
+			Scan:      []string{"Id"},
+			Expect:    statements.ExpectRowOrNone,
+		}
+		bound := modelptr.BindQuery(models.Mapper, qu)
+		//
+		err := bound.QueryOne(db, person)
+		chk.ErrorIs(err, set.ErrReadOnly)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("missing arguments", func(t *testing.T) {
+		// Query has arguments not in the struct.
+		chk := assert.New(t)
+		qu := &statements.Query{
+			SQL:       "INSERT",
+			Arguments: []string{"Fields", "Not", "Found"},
+			Scan:      []string{"Id"},
+			Expect:    statements.ExpectRowOrNone,
+		}
+		bound := modelptr.BindQuery(models.Mapper, qu)
+		//
+		err := bound.QueryOne(db, &person)
+		chk.ErrorIs(err, set.ErrUnknownField)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("missing arguments slice", func(t *testing.T) {
+		// Query has arguments not in the struct.
+		chk := assert.New(t)
+		qu := &statements.Query{
+			SQL:       "INSERT",
+			Arguments: []string{"Fields", "Not", "Found"},
+			Scan:      []string{"Id"},
+			Expect:    statements.ExpectRowOrNone,
+		}
+		bound := modelptr.BindQuery(models.Mapper, qu)
+		//
+		err := bound.QuerySlice(db, people)
+		chk.ErrorIs(err, set.ErrUnknownField)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("missing scan", func(t *testing.T) {
+		// Query has scan not in the struct
+		chk := assert.New(t)
+		qu := &statements.Query{
+			SQL:       "INSERT",
+			Arguments: []string{"First", "Last"},
+			Scan:      []string{"NotFound"},
+			Expect:    statements.ExpectRowOrNone,
+		}
+		bound := modelptr.BindQuery(models.Mapper, qu)
+		//
+		err := bound.QueryOne(db, &person)
+		chk.ErrorIs(err, set.ErrUnknownField)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("missing scan slice", func(t *testing.T) {
+		// Query has scan not in the struct
+		chk := assert.New(t)
+		qu := &statements.Query{
+			SQL:       "INSERT",
+			Arguments: []string{"First", "Last"},
+			Scan:      []string{"NotFound"},
+			Expect:    statements.ExpectRowOrNone,
+		}
+		bound := modelptr.BindQuery(models.Mapper, qu)
+		//
+		err := bound.QuerySlice(db, people)
+		chk.ErrorIs(err, set.ErrUnknownField)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
 }

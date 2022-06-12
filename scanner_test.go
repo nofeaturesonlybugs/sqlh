@@ -1,6 +1,8 @@
 package sqlh_test
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -10,16 +12,8 @@ import (
 	"github.com/nofeaturesonlybugs/errors"
 	"github.com/nofeaturesonlybugs/set"
 	"github.com/nofeaturesonlybugs/sqlh"
+	"github.com/nofeaturesonlybugs/sqlh/examples"
 )
-
-// rowsColumnsError is an IRows where the Columns() call returns an error.
-type rowsColumnsError struct{}
-
-func (r rowsColumnsError) Close() error                   { return nil }
-func (r rowsColumnsError) Columns() ([]string, error)     { return nil, errors.Errorf("columns error") }
-func (r rowsColumnsError) Err() error                     { return nil }
-func (r rowsColumnsError) Next() bool                     { return false }
-func (r rowsColumnsError) Scan(dest ...interface{}) error { return nil }
 
 func TestScanner_StructSliceQueryError(t *testing.T) {
 	// Tests Query(...) returns non-nil error when dest is []struct.
@@ -43,34 +37,6 @@ func TestScanner_StructSliceQueryError(t *testing.T) {
 		chk.Error(err)
 	}
 }
-
-// TODO Can't seem to mock this one with sqlmock.
-// func TestScanner_StructRowsErrNonNil(t *testing.T) {
-// 	// Tests that *sql.Rows.Err() != nil after the for...*sql.Rows.Next() {} loop when dest is a struct.
-// 	//
-// 	chk := assert.New(t)
-// 	//
-// 	db, mock, err := sqlmock.New()
-// 	chk.NoError(err)
-// 	chk.NotNil(mock)
-// 	chk.NotNil(db)
-// 	{
-// 		// When dest is []struct and *sql.Rows.Err() is non-nil
-// 		rows := sqlmock.NewRows([]string{"A"}).
-// 			AddRow("a").AddRow("b").AddRow("c").
-// 			RowError(2, errors.Errorf("[]struct *sql.Rows.Err() is non-nil"))
-// 		mock.ExpectQuery("select +").WillReturnRows(rows)
-// 		type Dest struct {
-// 			A string
-// 		}
-// 		scanner := &sqlh.Scanner{
-// 			Mapper: &set.Mapper{},
-// 		}
-// 		var d Dest
-// 		err = scanner.Select(db, &d, "select * from table")
-// 		chk.Error(err)
-// 	}
-// }
 
 func TestScanner_StructSliceRowsErrNonNil(t *testing.T) {
 	// Tests that *sql.Rows.Err() != nil after the for...*sql.Rows.Next() {} loop when dest is a []struct.
@@ -206,183 +172,170 @@ func TestScanner_SingleStruct(t *testing.T) {
 	}
 }
 
-func TestScanner_RowsColumnsError(t *testing.T) {
-	chk := assert.New(t)
-	//
-	scanner := &sqlh.Scanner{
-		Mapper: &set.Mapper{},
-	}
-	rows := rowsColumnsError{}
-	var dest []struct{}
-	err := scanner.ScanRows(rows, &dest)
-	chk.Error(err)
-}
-
-func TestScanner_ScanErrors(t *testing.T) {
-	chk := assert.New(t)
-	//
-	db, mock, err := sqlmock.New()
-	chk.NoError(err)
-	chk.NotNil(db)
-	chk.NotNil(mock)
+func TestScanner_Select_Errors(t *testing.T) {
+	db, mock, _ := sqlmock.New()
 	type Dest struct {
 		A int
 		B int
 	}
-	var dest []*Dest
 	scanner := &sqlh.Scanner{
 		Mapper: &set.Mapper{},
 	}
-	//
-	{ // mismatch column name
+
+	t.Run("nil dest", func(t *testing.T) {
+		chk := assert.New(t)
+		err := scanner.Select(db, nil, "select * from test")
+		chk.Error(err)
+	})
+	t.Run("invalid dest", func(t *testing.T) {
+		chk := assert.New(t)
+		var d map[string]interface{}
+		err := scanner.Select(db, &d, "select * from test")
+		chk.Error(err)
+	})
+	t.Run("readonly dest", func(t *testing.T) {
+		chk := assert.New(t)
+		var d Dest
+		err := scanner.Select(db, d, "select * from test")
+		chk.Error(err)
+	})
+	t.Run("struct column mismatch", func(t *testing.T) {
+		chk := assert.New(t)
+
+		dataRows := sqlmock.NewRows([]string{"X", "Y"})
+		dataRows.AddRow(1, 2)
+		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows).RowsWillBeClosed()
+
+		var d Dest
+		err := scanner.Select(db, &d, "select * from test")
+		chk.Error(err)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("struct column mismatch", func(t *testing.T) {
+		chk := assert.New(t)
+
 		dataRows := sqlmock.NewRows([]string{"X", "Y"})
 		dataRows.AddRow(1, 2)
 		dataRows.AddRow(3, 4)
-		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-		rows, err := db.Query("select * from test")
-		chk.NoError(err)
-		chk.NotNil(rows)
-		defer rows.Close()
-		err = scanner.ScanRows(rows, &dest)
+		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows).RowsWillBeClosed()
+
+		var d []Dest
+		err := scanner.Select(db, &d, "select * from test")
 		chk.Error(err)
-		err = mock.ExpectationsWereMet()
-		chk.NoError(err)
-	}
-	{ // first scan fails
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("struct rows first scan fails", func(t *testing.T) {
+		chk := assert.New(t)
+
 		dataRows := sqlmock.NewRows([]string{"A", "B"})
 		dataRows.AddRow("a", "b")
 		dataRows.AddRow(3, 4)
-		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-		rows, err := db.Query("select * from test")
-		chk.NoError(err)
-		chk.NotNil(rows)
-		defer rows.Close()
-		err = scanner.ScanRows(rows, &dest)
+		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows).RowsWillBeClosed()
+
+		var d []Dest
+		err := scanner.Select(db, &d, "select * from test")
 		chk.Error(err)
-		err = mock.ExpectationsWereMet()
-		chk.NoError(err)
-	}
-	{ // second scan fails
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("struct rows second scan fails", func(t *testing.T) {
+		chk := assert.New(t)
+
 		dataRows := sqlmock.NewRows([]string{"A", "B"})
 		dataRows.AddRow(3, 4)
 		dataRows.AddRow("a", "b")
-		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-		rows, err := db.Query("select * from test")
-		chk.NoError(err)
-		chk.NotNil(rows)
-		defer rows.Close()
-		err = scanner.ScanRows(rows, &dest)
+		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows).RowsWillBeClosed()
+
+		var d []Dest
+		err := scanner.Select(db, &d, "select * from test")
 		chk.Error(err)
-		err = mock.ExpectationsWereMet()
-		chk.NoError(err)
-	}
-	{ // first scan fails, dest is slice of scalar
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("scalar rows first scan fails", func(t *testing.T) {
+		chk := assert.New(t)
+
 		dataRows := sqlmock.NewRows([]string{"n"})
 		dataRows.AddRow("abc")
 		dataRows.AddRow(4)
-		var n []int
-		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-		err = scanner.Select(db, &n, "select * from foo")
+		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows).RowsWillBeClosed()
+
+		var d []int
+		err := scanner.Select(db, &d, "select * from test")
 		chk.Error(err)
-	}
-	{ // second scan fails, dest is slice of scalar
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("scalar rows second scan fails", func(t *testing.T) {
+		chk := assert.New(t)
+
 		dataRows := sqlmock.NewRows([]string{"n"})
 		dataRows.AddRow(3)
 		dataRows.AddRow("abc")
-		var n []int
-		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-		err = scanner.Select(db, &n, "select * from foo")
+		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows).RowsWillBeClosed()
+
+		var d []int
+		err := scanner.Select(db, &d, "select * from test")
 		chk.Error(err)
-	}
-	{ // second scan fails, dest is slice of scalar
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("scalar rows error", func(t *testing.T) {
+		chk := assert.New(t)
+
 		dataRows := sqlmock.NewRows([]string{"n"})
 		dataRows.AddRow(3)
-		dataRows.AddRow("4")
+		dataRows.AddRow(4)
 		dataRows.RowError(0, errors.Errorf("oops"))
-		var n []int
-		mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-		err = scanner.Select(db, &n, "select * from foo")
+
+		var d []int
+		err := scanner.Select(db, &d, "select * from test")
 		chk.Error(err)
-	}
+		chk.NoError(mock.ExpectationsWereMet())
+	})
 }
 
-func TestScanner_InvalidDest(t *testing.T) {
-	chk := assert.New(t)
-	//
-	db, mock, err := sqlmock.New()
-	chk.NoError(err)
-	chk.NotNil(db)
-	chk.NotNil(mock)
-	//
-	scanner := &sqlh.Scanner{
-		Mapper: &set.Mapper{
-			Tags: []string{"json"},
-		},
-	}
-	// Select with map dest errors
-	dest := map[string]interface{}{}
-	err = scanner.Select(db, &dest, "select * from test")
-	chk.Error(err)
-	// Scan rows with invalid dest.
-	var n int
-	mock.ExpectQuery("select +").WillReturnRows(sqlmock.NewRows([]string{"a"}).AddRow(10))
-	rows, err := db.Query("select * from foo")
-	chk.NoError(err)
-	err = scanner.ScanRows(rows, &n)
-	chk.Error(err)
-}
-func TestScanner_DestIsNil(t *testing.T) {
-	chk := assert.New(t)
-	//
-	db, mock, err := sqlmock.New()
-	chk.NoError(err)
-	chk.NotNil(db)
-	chk.NotNil(mock)
-	//
-	dataRows := sqlmock.NewRows([]string{"A", "B"})
-	dataRows.AddRow(1, 2)
-	dataRows.AddRow(3, 4)
-	//
-	scanner := &sqlh.Scanner{
-		Mapper: &set.Mapper{
-			Tags: []string{"json"},
-		},
-	}
-	// Select() with nil dest errors
-	err = scanner.Select(db, nil, "select * from test")
-	chk.Error(err)
-	// ScanRows with nil dest errors
-	mock.ExpectQuery("select (.+)").WillReturnRows(dataRows)
-	rows, err := db.Query("select * from test")
-	chk.NoError(err)
-	defer rows.Close()
-	err = scanner.ScanRows(rows, nil)
-	chk.Error(err)
-	err = mock.ExpectationsWereMet()
-	chk.NoError(err)
-}
-
-func TestScanner_DestNotWritable(t *testing.T) {
-	chk := assert.New(t)
-	//
-	db, mock, err := sqlmock.New()
-	chk.NoError(err)
-	chk.NotNil(db)
-	chk.NotNil(mock)
-	//
+func TestScanner_ScanRows_Errors(t *testing.T) {
 	type Dest struct {
 		A int
 		B int
 	}
+	//
+	db, mock, _ := sqlmock.New()
+	//
 	scanner := &sqlh.Scanner{
-		Mapper: &set.Mapper{
-			Tags: []string{"json"},
-		},
+		Mapper: &set.Mapper{},
 	}
-	// dest not writable
-	var dest []*Dest
-	err = scanner.Select(db, dest, "select * from test")
-	chk.Error(err)
+
+	t.Run("nil dest", func(t *testing.T) {
+		chk := assert.New(t)
+
+		mock.ExpectQuery("select +").
+			WillReturnRows(sqlmock.NewRows([]string{"a"}).AddRow(10)).
+			RowsWillBeClosed()
+
+		rows, err := db.Query("select * from foo")
+		chk.NoError(err)
+		err = scanner.ScanRows(rows, nil)
+		chk.Error(err)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("invalid dest", func(t *testing.T) {
+		chk := assert.New(t)
+
+		var n int
+		mock.ExpectQuery("select +").
+			WillReturnRows(sqlmock.NewRows([]string{"a"}).AddRow(10)).
+			RowsWillBeClosed()
+
+		rows, err := db.Query("select * from foo")
+		chk.NoError(err)
+		err = scanner.ScanRows(rows, &n)
+		chk.Error(err)
+		chk.NoError(mock.ExpectationsWereMet())
+	})
+	t.Run("readonly dest", func(t *testing.T) {
+		chk := assert.New(t)
+		var d Dest
+		err := scanner.Select(db, d, "select * from test")
+		chk.Error(err)
+	})
 }
 
 func TestScanner_DestWrongType(t *testing.T) {
@@ -416,4 +369,172 @@ func TestScanner_DestWrongType(t *testing.T) {
 	chk.Error(err)
 	err = mock.ExpectationsWereMet()
 	chk.NoError(err)
+}
+
+func TestScanner_Select(t *testing.T) {
+	type SimpleStruct struct {
+		Message string
+		Number  int
+	}
+	//
+	type NestedInnerStruct struct {
+		Id       int       `json:"id"`
+		Created  time.Time `json:"created"`
+		Modified time.Time `json:"modified"`
+	}
+	type NestedOuterStruct struct {
+		NestedInnerStruct
+		Message string `json:"message"`
+		Number  int    `json:"value" db:"num"`
+	}
+	type PointerOuterStruct struct {
+		*NestedInnerStruct
+		Message string `json:"message"`
+		Number  int    `json:"value" db:"num"`
+	}
+
+	//
+	// Some examples return times from time generator.
+	tg := examples.TimeGenerator{}
+	times := []time.Time{tg.Next(), tg.Next(), tg.Next(), tg.Next()}
+	//
+	type SelectTest struct {
+		Name         string
+		Example      examples.Example
+		Dest         reflect.Type
+		DestPointers reflect.Type
+		Expect       interface{}
+		Scanner      *sqlh.Scanner
+	}
+	tests := []SelectTest{
+		{
+			Name:         "slice-struct",
+			Example:      examples.ExSimpleMapper,
+			Dest:         reflect.TypeOf([]SimpleStruct(nil)),
+			DestPointers: reflect.TypeOf([]*SimpleStruct(nil)),
+			Expect: []SimpleStruct{
+				{Message: "Hello, World!", Number: 42},
+				{Message: "So long!", Number: 100},
+			},
+			Scanner: &sqlh.Scanner{
+				Mapper: &set.Mapper{},
+			},
+		},
+		{
+			Name:         "slice-struct-with-nesting",
+			Example:      examples.ExNestedStruct,
+			Dest:         reflect.TypeOf([]NestedOuterStruct(nil)),
+			DestPointers: reflect.TypeOf([]*NestedOuterStruct(nil)),
+			Expect: []NestedOuterStruct{
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 1, Created: times[0], Modified: times[1]},
+					Message:           "Hello, World!",
+					Number:            42,
+				},
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 2, Created: times[2], Modified: times[3]},
+					Message:           "So long!",
+					Number:            100,
+				},
+			},
+			Scanner: &sqlh.Scanner{
+				Mapper: &set.Mapper{
+					Elevated: set.NewTypeList(NestedInnerStruct{}),
+					Tags:     []string{"db", "json"},
+				},
+			},
+		},
+		{
+			Name:         "slice-struct-with-pointer-nesting",
+			Example:      examples.ExNestedStruct,
+			Dest:         reflect.TypeOf([]PointerOuterStruct(nil)),
+			DestPointers: reflect.TypeOf([]*PointerOuterStruct(nil)),
+			Expect: []NestedOuterStruct{
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 1, Created: times[0], Modified: times[1]},
+					Message:           "Hello, World!",
+					Number:            42,
+				},
+				{
+					NestedInnerStruct: NestedInnerStruct{Id: 2, Created: times[2], Modified: times[3]},
+					Message:           "So long!",
+					Number:            100,
+				},
+			},
+			Scanner: &sqlh.Scanner{
+				Mapper: &set.Mapper{
+					Elevated: set.NewTypeList(NestedInnerStruct{}),
+					Tags:     []string{"db", "json"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+
+			chk := assert.New(t)
+			db, err := examples.Connect(test.Example)
+			chk.NoError(err)
+
+			dest := reflect.New(test.Dest).Interface()
+
+			err = test.Scanner.Select(db, dest, "select * from mytable")
+			chk.NoError(err)
+
+			// There's different ways we can check for equality here but we'll just see if
+			// what we have encodes the same as what we expect.
+			expect, err := json.Marshal(test.Expect)
+			chk.NoError(err)
+			actual, err := json.Marshal(dest)
+			chk.NoError(err)
+			chk.Equal(expect, actual)
+		})
+		t.Run(test.Name+"-pointers", func(t *testing.T) {
+			t.Parallel()
+
+			chk := assert.New(t)
+			db, err := examples.Connect(test.Example)
+			chk.NoError(err)
+
+			dest := reflect.New(test.DestPointers).Interface()
+
+			err = test.Scanner.Select(db, dest, "select * from mytable")
+			chk.NoError(err)
+
+			// There's different ways we can check for equality here but we'll just see if
+			// what we have encodes the same as what we expect.
+			expect, err := json.Marshal(test.Expect)
+			chk.NoError(err)
+			actual, err := json.Marshal(dest)
+			chk.NoError(err)
+			chk.Equal(expect, actual)
+		})
+		t.Run(test.Name+"-scan-rows", func(t *testing.T) {
+			t.Parallel()
+
+			chk := assert.New(t)
+			db, err := examples.Connect(test.Example)
+			chk.NoError(err)
+
+			dest := reflect.New(test.Dest).Interface()
+
+			rows, err := db.Query("select * from mytable")
+			chk.NoError(err)
+			defer rows.Close()
+
+			err = test.Scanner.ScanRows(rows, dest)
+			chk.NoError(err)
+
+			// There's different ways we can check for equality here but we'll just see if
+			// what we have encodes the same as what we expect.
+			expect, err := json.Marshal(test.Expect)
+			chk.NoError(err)
+			actual, err := json.Marshal(dest)
+			chk.NoError(err)
+			chk.Equal(expect, actual)
+		})
+
+	}
 }

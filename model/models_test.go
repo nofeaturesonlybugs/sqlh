@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -65,56 +66,111 @@ func (me ModelQueryTestSlice) Tests() []Test {
 	return tests
 }
 
-func TestModels_DoubleRegister(t *testing.T) {
-	// Double registering a model should hit an early return in Register()
-	//
-	mdb := examples.NewModels()
-	mdb.Register(&examples.Address{})
-}
-func TestModels_RegisterPanicNoTableName(t *testing.T) {
-	// Models must have a table name when registering.
-	chk := assert.New(t)
-	//
-	type T struct{}
-	recovered := false
-	recoverFunc := func() {
-		if r := recover(); r != nil {
-			recovered = true
+func TestModels_Register(t *testing.T) {
+	t.Run("double register", func(t *testing.T) {
+		// Double registering a model should hit an early return in Register()
+		mdb := examples.NewModels()
+		mdb.Register(&examples.Address{})
+
+	})
+	t.Run("no tablename panics", func(t *testing.T) {
+		// Models must have a table name when registering.
+		chk := assert.New(t)
+		//
+		type T struct{}
+		recovered := false
+		mdb := examples.NewModels()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					recovered = true
+				}
+			}()
+			mdb.Register(&T{})
+		}()
+		chk.True(recovered)
+	})
+	t.Run("tablename option", func(t *testing.T) {
+		// We can provide table name either by embedding in struct or passing as argument to Register()
+		chk := assert.New(t)
+		//
+		type A struct {
+			model.TableName `model:"table_a"`
+			Name            string `db:"name"`
 		}
-	}
-	mdb := examples.NewModels()
-	func() {
-		defer recoverFunc()
-		mdb.Register(&T{})
-	}()
-	chk.True(recovered)
+		type B struct {
+			Name string `db:"name"`
+		}
+		//
+		mdb := examples.NewModels()
+		mdb.Register(&A{})
+		mdb.Register(&B{}, model.TableName("table_b"))
+		//
+		mdl, err := mdb.Lookup(&A{})
+		chk.NoError(err)
+		chk.NotNil(mdl)
+		chk.Equal("table_a", mdl.Table.Name)
+		//
+		mdl, err = mdb.Lookup(&B{})
+		chk.NoError(err)
+		chk.NotNil(mdl)
+		chk.Equal("table_b", mdl.Table.Name)
+	})
+	t.Run("reflect type", func(t *testing.T) {
+		// We can register types via reflect.Type
+		chk := assert.New(t)
+		//
+		type A struct {
+			model.TableName `model:"table_a"`
+			Name            string `db:"name"`
+		}
+		//
+		mdb := examples.NewModels()
+		mdb.Register(reflect.TypeOf((*A)(nil)).Elem())
+		//
+		mdl, err := mdb.Lookup(&A{})
+		chk.NoError(err)
+		chk.NotNil(mdl)
+		chk.Equal("table_a", mdl.Table.Name)
+	})
 }
 
-func TestModels_RegisterTableNameOption(t *testing.T) {
-	// We can provide table name either by embedding in struct or passing as argument to Register()
-	chk := assert.New(t)
-	//
-	type A struct {
-		model.TableName `model:"table_a"`
-		Name            string `db:"name"`
-	}
-	type B struct {
-		Name string `db:"name"`
-	}
-	//
+func TestModels_Save(t *testing.T) {
 	mdb := examples.NewModels()
-	mdb.Register(&A{})
-	mdb.Register(&B{}, model.TableName("table_b"))
-	//
-	mdl, err := mdb.Lookup(&A{})
-	chk.NoError(err)
-	chk.NotNil(mdl)
-	chk.Equal("table_a", mdl.Table.Name)
-	//
-	mdl, err = mdb.Lookup(&B{})
-	chk.NoError(err)
-	chk.NotNil(mdl)
-	chk.Equal("table_b", mdl.Table.Name)
+
+	t.Run("nil ptr", func(t *testing.T) {
+		// Code overage for (*T)(nil)
+		chk := assert.New(t)
+		address := (*examples.Address)(nil)
+		err := mdb.Save(nil, address)
+		chk.Error(err)
+	})
+	t.Run("slice empty", func(t *testing.T) {
+		// Code overage for []T or []*T when slice is empty
+		chk := assert.New(t)
+
+		addresses := []*examples.Address(nil)
+		err := mdb.Save(nil, addresses)
+		chk.NoError(err)
+
+		addresses = []*examples.Address{}
+		err = mdb.Save(nil, addresses)
+		chk.NoError(err)
+	})
+	t.Run("slice nil entry", func(t *testing.T) {
+		// Code overage for []*T when first element is nil
+		chk := assert.New(t)
+		addresses := []*examples.Address{nil}
+		err := mdb.Save(nil, addresses)
+		chk.Error(err)
+	})
+	t.Run("unsupported type", func(t *testing.T) {
+		// Code overage for unsupported type
+		chk := assert.New(t)
+		var unsupported *[]examples.Address
+		err := mdb.Save(nil, unsupported)
+		chk.Error(err)
+	})
 }
 
 func TestModels_TableNameTypeChecking(t *testing.T) {
@@ -219,23 +275,6 @@ func TestModelsQueriesError(t *testing.T) {
 	mock.ExpectQuery("UPSERT+").WillReturnError(errors.Errorf("some error"))
 	err = examples.Models.Upsert(db, []*examples.Upsertable{{}, {}})
 	chk.Error(err)
-}
-
-func TestModels_RegisterSetsVAndVSlice(t *testing.T) {
-	chk := assert.New(t)
-	//
-	mdb := examples.NewModels()
-	model, err := mdb.Lookup(&examples.Address{})
-	chk.NoError(err)
-	chk.NotNil(model)
-
-	v, vs := model.NewInstance(), model.NewSlice()
-	if _, ok := v.(*examples.Address); !ok {
-		chk.Fail("Model.NewInstance() failed.")
-	}
-	if _, ok := vs.([]*examples.Address); !ok {
-		chk.Fail("Model.NewSlice() failed.")
-	}
 }
 
 // MakeModelQueryTestsForCompositeKeyNoAuto builds a slice of Test types to test a model with
