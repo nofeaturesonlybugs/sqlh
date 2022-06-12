@@ -76,7 +76,7 @@ func (me QueryBinding) QueryOne(q sqlh.IQueries, value interface{}) error {
 func (me QueryBinding) QuerySlice(q sqlh.IQueries, values interface{}) error {
 	v := reflect.ValueOf(values)
 	if v.Kind() != reflect.Slice {
-		return fmt.Errorf("values expects a slice; got %T", values) // TODO+NB Sentinal error
+		return fmt.Errorf("values expects a slice; got %T", values) // TODO Sentinal error
 	}
 	// Size of slice will be helpful here.
 	size := v.Len()
@@ -94,7 +94,7 @@ func (me QueryBinding) QuerySlice(q sqlh.IQueries, values interface{}) error {
 	// If the calls to Plan succeed then further calls to Fields or Assignables will not error.
 	preparedArgs, err := me.mapper.Prepare(v.Index(0))
 	if err != nil {
-		return err // TODO sentinal? wrap?
+		return err // TODO sentinal or wrap?
 	}
 	preparedScans := preparedArgs.Copy()
 	if err = preparedArgs.Plan(me.query.Arguments...); err != nil {
