@@ -3,7 +3,7 @@ package model
 import "reflect"
 
 // TableName represents a database table name.  Embed the TableName type into a struct and set
-// the approprate struct tag to configure the table name.
+// the appropriate struct tag to configure the table name.
 type TableName string
 
 var (
